@@ -32,6 +32,7 @@ class ConcurrentBuyersTest {
     private static final int BUYERS = 200;
     // Few seats, many buyers: almost every request overlaps another.
     private static final int POOL = 12;
+    private static final long SWEEP_PAUSE_MS = 5;
 
     @RegisterExtension final BookingWorld w = new BookingWorld();
 
@@ -66,6 +67,9 @@ class ConcurrentBuyersTest {
                                 while (racing.get()) {
                                     assertEquals(new ExpireSweep.Result(0, 0), w.sweep.run());
                                     sweeps.incrementAndGet();
+                                    // A short pause, as between scheduled runs: a sweep that
+                                    // re-takes the writer lock back to back starves the buyers.
+                                    Thread.sleep(SWEEP_PAUSE_MS);
                                 }
                                 return null;
                             });
@@ -105,10 +109,15 @@ class ConcurrentBuyersTest {
                                 }));
             }
             start.countDown();
-            for (Future<?> f : done) {
-                f.get();
+            try {
+                for (Future<?> f : done) {
+                    f.get();
+                }
+            } finally {
+                // Stop the sweeper even when a buyer failed, or closing the executor would wait
+                // for it forever.
+                racing.set(false);
             }
-            racing.set(false);
             sweeper.get();
         }
         assertTrue(sweeps.get() > 0, "the sweep ran during the race");
