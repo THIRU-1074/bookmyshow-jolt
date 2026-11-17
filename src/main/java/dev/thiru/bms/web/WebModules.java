@@ -1,6 +1,7 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.Accounts;
+import dev.thiru.bms.application.CatalogQueries;
 import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.User;
 import in.jolt.App;
@@ -70,7 +71,13 @@ public final class WebModules {
         app.use("/api", rbac.gate());
         app.use("/api/admin", rbac.adminLayer());
 
+        CatalogQueries catalog = new CatalogQueries(deps.uow(), deps.clock(), deps.policy());
+
         app.module(new AuthModule(accounts, tokens));
+        app.module(new CatalogModule(catalog));
+        app.module(
+                new LiveModule(
+                        catalog, deps.live(), deps.clock(), settings.sseHeartbeat(), mapper));
         // TODO(jolt#71): register the DB check with exposeMetrics once apps can add checks.
         app.get(
                 "/api/health",
