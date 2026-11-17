@@ -18,3 +18,7 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      # Render's load balancer connects from private addresses; trust its X-Forwarded-* headers so
+      # rate limits key on the real client and HTTPS is detected (Secure cookies, HSTS).
+      - key: TRUST_PROXY
+        value: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
