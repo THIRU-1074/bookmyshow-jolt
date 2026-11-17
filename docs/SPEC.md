@@ -346,9 +346,9 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 
 - `features.<slice>` (`catalog`, `live`, `accounts`, `booking`, `payments`, `admin` for owner and admin): each slice owns its routes, request and response types, use cases, SQL and tests. Simple CRUD is a transaction script (route, then SQL). Slices MUST NOT import each other or any adapter; a rule two slices need goes to `kernel`, and SQL MAY be duplicated.
 - `kernel`: pure shared rules and value objects (booking state machine, refund policy, hold and payment transitions, `SeatId`, `BookingCode`, seat layout and show invariants, money in paise). Imports only the JDK.
-- `ports`: only real I/O seams: `Db` (transaction with after-commit callbacks), `PaymentGateway`, `SeatEvents` and `LiveSeats`, `PasswordHasher`, `Ids`, `RefreshTokenStore`, `IdempotencyStore`, `WebhookVerifier`, `GatewayCallback`. No port per entity. `java.time.Clock` is the clock. Ports import only `kernel` and the JDK.
+- `ports`: only real I/O seams: `Db` (transaction with after-commit callbacks), `PaymentGateway`, `SeatEvents` and `LiveSeats`, `PasswordHasher`, `Ids`, `RefreshTokenStore`, `GatewayCallback`. No port per entity. `java.time.Clock` is the clock. Ports import only `kernel` and the JDK. Idempotency-Key responses go through Jolt's `IdempotencyStore` SPI (adapter `adapters.db.SqlIdempotency`) and webhook signatures through Jolt's `Webhooks`; being Jolt types, neither is a port.
 - `adapters.<seam>`: one adapter per port. `Main` is the only class that names adapters.
-- `web`: shared HTTP plumbing only (problem+json, RBAC gate and `Permissions`, principal, paging, Idempotency-Key).
+- `web`: shared HTTP plumbing only (problem+json, RBAC gate and `Permissions`, principal, paging, Idempotency-Key, the public catalog cache).
 - Wire types are generated from `api/openapi.yaml` (Java records and TypeScript types); shared shapes such as the seat map come from there, not from another slice.
 
 ### Guardrails
