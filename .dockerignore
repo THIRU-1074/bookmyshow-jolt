@@ -1,0 +1,6 @@
+target/
+.git/
+.worktrees/
+.claude/
+data/
+*.db*

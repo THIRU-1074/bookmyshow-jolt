@@ -1,0 +1,14 @@
+# Render Blueprint: one free Docker web service serving the UI and the API.
+# The free plan has an ephemeral disk, so the SQLite database resets on each deploy or restart.
+services:
+  - type: web
+    name: bookmyshow-jolt
+    runtime: docker
+    plan: free
+    branch: integration
+    healthCheckPath: /api/health
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEBHOOK_SECRET
+        generateValue: true
