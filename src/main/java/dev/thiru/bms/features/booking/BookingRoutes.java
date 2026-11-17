@@ -70,10 +70,10 @@ public final class BookingRoutes implements RouteModule {
      */
     public BookingRoutes(
             Db db,
+            SeatEvents events,
+            Ids ids,
             Clock clock,
             BookingPolicy policy,
-            Ids ids,
-            SeatEvents events,
             PaymentGateway gateway,
             Middleware idempotent,
             Middleware holdLimit) {

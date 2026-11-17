@@ -7,6 +7,9 @@ import dev.thiru.bms.kernel.booking.HoldStatus;
 import dev.thiru.bms.kernel.payment.PaymentStatus;
 import dev.thiru.bms.ports.Db;
 import dev.thiru.bms.testing.MutableClock;
+import dev.thiru.bms.testing.RecordingEvents;
+import dev.thiru.bms.testing.RecordingGateway;
+import dev.thiru.bms.testing.SequentialIds;
 import dev.thiru.bms.testing.TestDb;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -38,9 +41,9 @@ final class BookingWorld implements AutoCloseable, AfterEachCallback {
     final LocalDate seedDate;
     final MutableClock clock;
     final BookingPolicy policy = BookingPolicy.defaults();
-    final BookingFakes.Events events = new BookingFakes.Events();
-    final BookingFakes.SeqIds ids = new BookingFakes.SeqIds();
-    final BookingFakes.Gateway gateway = new BookingFakes.Gateway();
+    final RecordingEvents events = new RecordingEvents();
+    final SequentialIds ids = new SequentialIds();
+    final RecordingGateway gateway = new RecordingGateway();
 
     final CreateHold holds;
     final CreateBooking create;

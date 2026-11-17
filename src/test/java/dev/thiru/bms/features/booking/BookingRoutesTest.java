@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.ports.Db;
+import dev.thiru.bms.testing.RecordingEvents;
+import dev.thiru.bms.testing.RecordingGateway;
+import dev.thiru.bms.testing.SequentialIds;
 import dev.thiru.bms.testing.SliceKit;
 import java.time.Duration;
 import java.time.Instant;
@@ -25,9 +28,9 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  */
 class BookingRoutesTest {
 
-    final BookingFakes.Events events = new BookingFakes.Events();
-    final BookingFakes.SeqIds ids = new BookingFakes.SeqIds();
-    final BookingFakes.Gateway gateway = new BookingFakes.Gateway();
+    final RecordingEvents events = new RecordingEvents();
+    final SequentialIds ids = new SequentialIds();
+    final RecordingGateway gateway = new RecordingGateway();
 
     @RegisterExtension
     final SliceKit kit =
@@ -36,10 +39,10 @@ class BookingRoutesTest {
                             List.of(
                                     new BookingRoutes(
                                             k.db(),
+                                            events,
+                                            ids,
                                             k.clock(),
                                             k.policy(),
-                                            ids,
-                                            events,
                                             gateway,
                                             k.pipeline().idempotent(),
                                             k.pipeline().holdLimit())));
