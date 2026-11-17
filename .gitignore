@@ -15,3 +15,13 @@ buildNumber.properties
 .project
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
+
+# App
+.worktrees/
+data/
+*.db
+*.db-shm
+*.db-wal
+.idea/
+*.iml
+.vscode/
