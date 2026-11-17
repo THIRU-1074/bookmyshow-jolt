@@ -364,7 +364,7 @@ These replace line-by-line review; a change is done when all are green in `mvn -
 
 ### Current layout (until migrated)
 
-`domain` (entities, rules, ports, `Clock` use) imports only the JDK. `application` (use cases, transaction boundary through a domain `UnitOfWork` port) imports `domain` only. `adapters.db` and `adapters.payment` implement ports with jolt-db and `java.net.http`. `web` holds `RouteModule`s, request/response records and `onError` mappers and imports `application` and `domain`. `Main` is the only class that names concrete adapters. `ArchitectureTest` enforces this.
+Since wave 1, `kernel` (entities, rules, `Clock` use) imports only the JDK, and `ports` (the surviving I/O seams plus `Db`) imports only `kernel` and the JDK. The legacy repository ports (`UnitOfWork`, `Repositories` and the per-entity repositories) stay in `domain.port` until wave 6 and import only `kernel`, `ports` and the JDK. `application` (use cases, transaction boundary through `UnitOfWork`) imports `kernel`, `ports` and `domain.port`. `adapters.db` and `adapters.payment` implement ports with jolt-db and `java.net.http`. `web` holds `RouteModule`s, request/response records and `onError` mappers and imports `application`, `kernel` and `ports`. `Main` is the only class that names concrete adapters. `ArchitectureTest` enforces this.
 
 ## 11. Jolt features used
 
