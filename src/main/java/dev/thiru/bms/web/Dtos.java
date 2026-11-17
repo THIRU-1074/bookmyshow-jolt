@@ -24,22 +24,6 @@ final class Dtos {
 
     private Dtos() {}
 
-    // ---- auth ----
-
-    record UserDto(long id, String email, String name, List<String> roles) {
-        static UserDto of(User u) {
-            return new UserDto(
-                    u.id(),
-                    u.email(),
-                    u.name(),
-                    u.roles().stream().map(Enum::name).sorted().toList());
-        }
-    }
-
-    record AuthResponse(UserDto user, String accessToken, long expiresIn) {}
-
-    record TokenResponse(String accessToken, long expiresIn) {}
-
     // ---- catalog ----
 
     record CityDto(String id, String name, String timeZone) {

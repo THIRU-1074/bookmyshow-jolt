@@ -13,8 +13,8 @@ import dev.thiru.bms.adapters.payment.MockGatewayClient;
 import dev.thiru.bms.adapters.payment.MockGatewaySender;
 import dev.thiru.bms.adapters.payment.MockPaymentGateway;
 import dev.thiru.bms.adapters.payment.WebhookSigner;
-import dev.thiru.bms.application.Accounts;
 import dev.thiru.bms.application.ExpireSweep;
+import dev.thiru.bms.features.accounts.Accounts;
 import dev.thiru.bms.web.WebDeps;
 import dev.thiru.bms.web.WebModules;
 import in.jolt.App;
@@ -137,7 +137,7 @@ public final class Main {
             Pbkdf2PasswordHasher hasher = new Pbkdf2PasswordHasher();
             if (config.seedAdmin()) {
                 boolean created =
-                        new Accounts(uow, hasher, clock)
+                        new Accounts(sliceDb, hasher, clock)
                                 .ensureAdmin(config.adminEmail(), config.adminPassword());
                 LOG.log(Level.INFO, created ? "Admin account created" : "Admin account kept");
             }

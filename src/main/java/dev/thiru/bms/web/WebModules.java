@@ -1,6 +1,5 @@
 package dev.thiru.bms.web;
 
-import dev.thiru.bms.application.Accounts;
 import dev.thiru.bms.application.AdminCatalog;
 import dev.thiru.bms.application.AdminReports;
 import dev.thiru.bms.application.BookingQueries;
@@ -12,16 +11,14 @@ import dev.thiru.bms.application.CreateHold;
 import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.UserAdmin;
+import dev.thiru.bms.features.accounts.Accounts;
+import dev.thiru.bms.features.accounts.AuthRoutes;
 import dev.thiru.bms.features.catalog.CatalogRoutes;
 import dev.thiru.bms.features.live.LiveRoutes;
-import dev.thiru.bms.kernel.account.Role;
-import dev.thiru.bms.kernel.account.User;
 import in.jolt.App;
-import in.jolt.HttpException;
 import in.jolt.JsonMapper;
 import in.jolt.Middleware;
 import in.jolt.Webhooks;
-import in.jolt.auth.RefreshTokens;
 import java.time.Duration;
 import java.util.Map;
 
@@ -66,18 +63,13 @@ public final class WebModules {
         WebDeps.Settings settings = deps.settings();
         Middleware idempotent = pipeline.idempotent();
 
-        Accounts accounts = new Accounts(deps.uow(), deps.hasher(), deps.clock());
-        RefreshTokens tokens =
-                RefreshTokens.of(pipeline.jwt())
-                        .accessTtl(AuthModule.ACCESS_TTL)
-                        .refreshTtl(AuthModule.REFRESH_TTL)
-                        .store(new JoltRefreshStore(deps.refreshTokens()))
-                        // Re-read on every issue and refresh: a demotion or deletion is picked up
-                        // the next time the access token is renewed.
-                        .claims(subject -> claimsFor(accounts, subject));
         BookingQueries bookings = new BookingQueries(deps.uow());
 
-        pipeline.module(new AuthModule(accounts, tokens));
+        pipeline.module(
+                AuthRoutes.of(
+                        pipeline.jwt(),
+                        new Accounts(deps.db(), deps.hasher(), deps.clock()),
+                        deps.refreshTokens()));
         pipeline.module(
                 new CatalogRoutes(deps.db(), deps.clock(), deps.policy(), pipeline.catalogCache()));
         pipeline.module(
@@ -150,16 +142,5 @@ public final class WebModules {
                             .noStore()
                             .json(Map.of("status", up ? "UP" : "DOWN", "db", up ? "UP" : "DOWN"));
                 });
-    }
-
-    private static Map<String, ?> claimsFor(Accounts accounts, String subject) {
-        long id;
-        try {
-            id = Long.parseLong(subject);
-        } catch (NumberFormatException e) {
-            throw new HttpException(401, "Invalid token");
-        }
-        User user = accounts.find(id).orElseThrow(() -> new HttpException(401, "Invalid token"));
-        return Map.of("roles", user.roles().stream().map(Role::name).sorted().toList());
     }
 }

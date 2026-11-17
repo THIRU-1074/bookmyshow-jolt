@@ -50,9 +50,6 @@ class RecordGeneratorTest {
     private static Map<String, List<String>> webRecords() {
         Map<String, List<String>> m = new LinkedHashMap<>();
         String[][] dtos = {
-            {"User", "UserDto"},
-            {"AuthResponse", "AuthResponse"},
-            {"TokenResponse", "TokenResponse"},
             {"City", "CityDto"},
             {"MovieDetail", "MovieDetail"},
             {"Cinema", "CinemaDto"},
@@ -95,8 +92,12 @@ class RecordGeneratorTest {
             add(m, schema, catalog + r);
             add(m, schema, live + r);
         }
-        add(m, "RegisterRequest", WEB + "AuthModule$RegisterRequest");
-        add(m, "LoginRequest", WEB + "AuthModule$LoginRequest");
+        String accounts = "dev.thiru.bms.features.accounts.AccountsDtos$";
+        add(m, "User", accounts + "UserDto");
+        add(m, "AuthResponse", accounts + "AuthResponse");
+        add(m, "TokenResponse", accounts + "TokenResponse");
+        add(m, "RegisterRequest", accounts + "RegisterRequest");
+        add(m, "LoginRequest", accounts + "LoginRequest");
         add(m, "HoldRequest", WEB + "BookingModule$HoldRequest");
         add(m, "BookingRequest", WEB + "BookingModule$BookingRequest");
         add(m, "WebhookEvent", WEB + "PaymentModule$WebhookBody");

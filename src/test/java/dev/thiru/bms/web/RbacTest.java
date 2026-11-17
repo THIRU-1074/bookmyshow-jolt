@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
+import in.jolt.auth.JwtAuth;
 import in.jolt.test.JoltTest;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -323,5 +325,18 @@ class RbacTest {
                 .json(body)
                 .expect(409)
                 .jsonEquals("code", "SEAT_UNAVAILABLE");
+    }
+
+    @Test
+    void aTokenIssuedBeforeTheRoleRenameStillCountsAsAudience() {
+        String legacy =
+                JwtAuth.hs256(WebKit.SECRET)
+                        .sign("1", Map.of("roles", List.of("USER")), Duration.ofMinutes(5));
+        kit.http.get("/api/bookings").header("Authorization", WebKit.bearer(legacy)).expect(200);
+        kit.http.get("/api/admin/stats").header("Authorization", WebKit.bearer(legacy)).expect(403);
+        String unknown =
+                JwtAuth.hs256(WebKit.SECRET)
+                        .sign("1", Map.of("roles", List.of("ROOT")), Duration.ofMinutes(5));
+        kit.http.get("/api/bookings").header("Authorization", WebKit.bearer(unknown)).expect(403);
     }
 }
