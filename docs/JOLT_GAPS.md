@@ -6,9 +6,9 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 
 | Gap | Jolt issue | Workaround location | Status |
 |---|---|---|---|
-| Repeated query params (`req.queryAll`) | [#52](https://github.com/THIRU-1074/custom-Http-Server/issues/52) | `web.Query` (comma lists only) | in progress |
-| App lifecycle hooks (`onStart`, `onStop`) | [#53](https://github.com/THIRU-1074/custom-Http-Server/issues/53) | `Main` (sweeper start, shutdown hook) | in progress |
-| Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `web.IdempotencyFilter` over the `IdempotencyStore` port | in progress |
+| Repeated query params (`req.queryAll`) | [#52](https://github.com/THIRU-1074/custom-Http-Server/issues/52) | `web.Query` (comma lists only) | closed upstream, awaiting release v0.4.0 (bump jolt.version, remove workaround) |
+| App lifecycle hooks (`onStart`, `onStop`) | [#53](https://github.com/THIRU-1074/custom-Http-Server/issues/53) | `Main` (sweeper start, shutdown hook) | closed upstream, awaiting release v0.4.0 (bump jolt.version, remove workaround) |
+| Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `web.IdempotencyFilter` over the `IdempotencyStore` port | closed upstream, awaiting release v0.4.0 (bump jolt.version, remove workaround) |
 | Schema migrations | [#55](https://github.com/THIRU-1074/custom-Http-Server/issues/55) | `adapters.db.SchemaRunner` | in progress |
 | IMMEDIATE tx, generated keys, batch, optimistic update | [#56](https://github.com/THIRU-1074/custom-Http-Server/issues/56) | `adapters.db` (JDBC URL `transaction_mode=IMMEDIATE`, row-count checks) | in progress |
 | Pagination helper | [#57](https://github.com/THIRU-1074/custom-Http-Server/issues/57) | `web.PageRequest`, `web.PageResult` | open |
@@ -25,3 +25,23 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | none yet (to be filed) | `web.Problems.middleware` catches handler failures and writes the problem itself | open |
 
 Not needed for v1: [#63](https://github.com/THIRU-1074/custom-Http-Server/issues/63) TTL cache (ETag covers the catalog).
+
+## Where each workaround lives
+
+Found with `grep -rn "TODO(jolt#" src`. Gaps with no marker yet have no workaround code merged in this branch.
+
+| Jolt issue | File holding the workaround |
+|---|---|
+| #52 | none yet (catalog query parsing in `web`, not merged) |
+| #53 | none yet (`Main` sweeper start and shutdown hook) |
+| #54 | none yet (`web.IdempotencyFilter`, not merged) |
+| #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
+| #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
+| #57 | none yet (`web.PageRequest`, `web.PageResult`) |
+| #58 | none yet (sweeper in `Main`) |
+| #59 | `src/main/java/dev/thiru/bms/adapters/payment/HmacVerifier.java`, `MockGatewayClient.java` (signing) |
+| #60 | none yet (`AppConfig.fromEnv()`) |
+| #61 | none yet (validators in `web`) |
+| #62 | `src/main/java/dev/thiru/bms/adapters/live/SeatEvents.java` |
+| #68 | `src/main/java/dev/thiru/bms/Main.java`, `Dockerfile` |
+| #69 to #71 | none yet (tests and `web` endpoints) |

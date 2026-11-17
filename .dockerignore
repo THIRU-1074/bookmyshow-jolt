@@ -3,4 +3,11 @@ target/
 .worktrees/
 .claude/
 data/
-*.db*
+*.db
+*.db-shm
+*.db-wal
+.idea/
+.vscode/
+*.iml
+Dockerfile
+.dockerignore
