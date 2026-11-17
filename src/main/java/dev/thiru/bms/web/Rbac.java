@@ -1,6 +1,5 @@
 package dev.thiru.bms.web;
 
-import in.jolt.JsonMapper;
 import in.jolt.Middleware;
 import in.jolt.auth.Auth;
 import in.jolt.auth.JwtAuth;
@@ -20,10 +19,12 @@ final class Rbac {
     private final Middleware adminOnly;
     private final Middleware ownerOrAdmin;
 
-    Rbac(JwtAuth jwtAuth, JsonMapper mapper) {
-        this.jwt = Guards.adapt(jwtAuth.middleware(), mapper);
-        this.adminOnly = Guards.adapt(Auth.requireRole("ADMIN"), mapper);
-        this.ownerOrAdmin = Guards.adapt(Auth.requireRole("THEATRE_OWNER", "ADMIN"), mapper);
+    Rbac(JwtAuth jwtAuth) {
+        // Since Jolt 0.4.1 these throw HttpException on refusal, so 401 and 403 leave through the
+        // problem+json mappers with WWW-Authenticate kept.
+        this.jwt = jwtAuth.middleware();
+        this.adminOnly = Auth.requireRole("ADMIN");
+        this.ownerOrAdmin = Auth.requireRole("THEATRE_OWNER", "ADMIN");
     }
 
     /** The gate itself; register with {@code app.use("/api", gate())}. */

@@ -21,7 +21,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | `JoltTest` support for SSE and streams | [#69](https://github.com/THIRU-1074/custom-Http-Server/issues/69) | `web.LiveSseTest` over a loopback socket | open |
 | SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | `web.LiveModule` (`snapshot` event on every connect) | open |
 | App-defined metrics and health checks | [#71](https://github.com/THIRU-1074/custom-Http-Server/issues/71) | `GET /api/health` DB check in `web.WebModules`, `GET /api/admin/stats` in `web.AdminModule` | open |
-| Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | [#76](https://github.com/THIRU-1074/custom-Http-Server/issues/76) | `web.Guards` re-raises the refusal as an exception so it leaves as problem+json | open |
+| Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | [#76](https://github.com/THIRU-1074/custom-Http-Server/issues/76) | none: `JwtAuth.middleware`, `Auth.requireRole`, `RateLimit` and `Csrf.protect` are installed as they are | done (v0.4.1) |
 | `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | [#77](https://github.com/THIRU-1074/custom-Http-Server/issues/77) | `web.Problems.middleware` catches handler failures and writes the problem itself | open |
 
 Not needed for v1: [#63](https://github.com/THIRU-1074/custom-Http-Server/issues/63) TTL cache (ETag covers the catalog).
@@ -45,5 +45,4 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | #69 | `src/test/java/dev/thiru/bms/web/LiveSseTest.java` |
 | #70 | `src/main/java/dev/thiru/bms/web/LiveModule.java` |
 | #71 | `src/main/java/dev/thiru/bms/web/WebModules.java` (`/api/health` DB check) |
-| #76 | `src/main/java/dev/thiru/bms/web/Guards.java` |
 | #77 | `src/main/java/dev/thiru/bms/web/Problems.java` |

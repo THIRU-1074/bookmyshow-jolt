@@ -65,7 +65,7 @@ public final class WebModules {
                         // Re-read on every issue and refresh: a demotion or deletion is picked up
                         // the next time the access token is renewed.
                         .claims(subject -> claimsFor(accounts, subject));
-        Rbac rbac = new Rbac(jwt, mapper);
+        Rbac rbac = new Rbac(jwt);
 
         app.use(RequestId.middleware());
         app.use(Logger.requests());
@@ -77,19 +77,17 @@ public final class WebModules {
         app.use(Compress.gzip());
 
         Duration minute = Duration.ofMinutes(1);
-        app.use("/api/auth/login", Guards.adapt(RateLimit.perIp(10, minute), mapper));
-        app.use("/api/auth/register", Guards.adapt(RateLimit.perIp(10, minute), mapper));
-        app.use("/api/auth/refresh", Guards.adapt(RateLimit.perIp(30, minute), mapper));
-        app.use("/api/auth", Guards.adapt(Csrf.protect(), mapper));
+        app.use("/api/auth/login", RateLimit.perIp(10, minute));
+        app.use("/api/auth/register", RateLimit.perIp(10, minute));
+        app.use("/api/auth/refresh", RateLimit.perIp(30, minute));
+        app.use("/api/auth", Csrf.protect());
         app.use("/api", rbac.gate());
         app.use("/api/admin", rbac.adminLayer());
         app.use("/api/owner", rbac.ownerLayer());
 
         Middleware idempotent = new IdempotencyFilter(deps.idempotency(), deps.clock()).required();
         // Runs after the gate, so "user" is the verified subject.
-        Middleware holdLimit =
-                Guards.adapt(
-                        RateLimit.perKey(20, minute, req -> "user:" + req.attr("user")), mapper);
+        Middleware holdLimit = RateLimit.perKey(20, minute, req -> "user:" + req.attr("user"));
 
         CatalogQueries catalog = new CatalogQueries(deps.uow(), deps.clock(), deps.policy());
         BookingQueries bookings = new BookingQueries(deps.uow());
@@ -124,8 +122,8 @@ public final class WebModules {
         MockGatewayPayments mock = null;
         if (settings.mockGateway()) {
             mock = new MockGatewayPayments(deps.uow(), deps.mockSender(), deps.ids(), deps.clock());
-            Middleware completeLimit = Guards.adapt(RateLimit.perIp(30, minute), mapper);
-            Middleware csrf = Guards.adapt(Csrf.protect(), mapper);
+            Middleware completeLimit = RateLimit.perIp(30, minute);
+            Middleware csrf = Csrf.protect();
             app.use(
                     "/mock-gateway",
                     (req, res, next) -> {
