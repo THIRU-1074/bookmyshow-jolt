@@ -1,6 +1,6 @@
 # ADR 0001: vertical feature slices around a thin hexagon
 
-- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade; wave 1 (kernel, ports, `ports.Db`) is merged too. Wave 2 step 0 (pipeline split, `SliceKit`, `WebKit` on SQLite, `ports.Db` wired) is done on `feat/restructure-wave2-step0`. Next: lanes A and B, see [Wave 2 briefs](#wave-2-briefs) and [How to build a slice](#how-to-build-a-slice).
+- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade; wave 1 (kernel, ports, `ports.Db`) is merged too. Wave 2 (catalog, live and accounts slices; legacy modules deleted) is done on `feat/restructure-wave2`, see [Wave 2 record](#wave-2-record). Next: wave 3, booking, see [Wave 3 brief](#wave-3-brief-booking) and [How to build a slice](#how-to-build-a-slice).
 - **Date:** 2026-11-17
 - **Supersedes:** the layer-first layering of SPEC section 10 once the last wave lands.
 
@@ -213,8 +213,8 @@ Each wave starts from a green `mvn -B verify` on `integration`, and ends green w
 |---|---|---|---|
 | 0 | foundation | baseline, target rules, port contracts, schema, codegen, this plan | **done** (merged onto `integration` with v0.4.1) |
 | 1 | integration, alone | `domain` to `kernel` (package moves only); surviving port interfaces to `ports`; add `ports.Db` + `Tx.afterCommit` and `adapters.db.SqliteDb` with a `Db` contract test; replace `ArchitectureTest`'s `domain` rule with the kernel rule; `web.Money` to `kernel.Money` | **done**, see [Wave 1 record](#wave-1-record) |
-| 2 | catalog+live, accounts (parallel) | `features.catalog` (public catalog, seat map; `kernel.catalog.SeatMap`), `features.live` (SSE), `features.accounts` (auth, me, `JoltRefreshStore`) | slices on SQLite tests; responses via `api.generated` or checked records; integration lane swaps registration and deletes `CatalogModule`, `LiveModule`, `AuthModule`, `CatalogQueries`, `Accounts` |
-| 3 | booking, alone | `features.booking`: holds, bookings, checkout, cancel, ticket, `ExpireSweep`, `Outcome`, owned-booking SQL; events via `afterCommit` | `ConcurrentBuyersTest` moved and green; integration lane deletes `BookingModule`, the booking use cases, `EventBuffer` |
+| 2 | catalog+live, accounts (parallel) | `features.catalog` (public catalog, seat map; `kernel.catalog.SeatMap`), `features.live` (SSE), `features.accounts` (auth, me, `JoltRefreshStore`) | **done**, see [Wave 2 record](#wave-2-record) |
+| 3 | booking, alone | `features.booking`: holds, bookings, checkout, cancel, ticket, `ExpireSweep`, `Outcome`, owned-booking SQL; events via `afterCommit` | `ConcurrentBuyersTest` moved and green; integration lane deletes `BookingModule`, the booking use cases, `Outcome` and `BookingQueries`; `EventBuffer` and `BookingOps` stay until waves 4 and 5, because `ProcessPaymentWebhook` and `CancelShow` use them (see [Wave 3 brief](#wave-3-brief-booking)) |
 | 4 | payments | `features.payments`: webhook, mock gateway, their booking/payment transition SQL | E2E payment journey green; `PaymentModule`, `ProcessPaymentWebhook`, `MockGatewayPayments` deleted |
 | 5 | admin | `features.admin`: catalog writes, reports, stats, users and roles, owner links, show cancel, `CinemaScope` lookup | `OwnerApiTest`, `AdminApiTest`, `AdminUsersApiTest` moved and green; `AdminModule`, `OwnerModule`, admin use cases deleted |
 | 6 | integration | delete `Repositories`, `UnitOfWork`, repository interfaces, `SqlRepositories`, `SqlCatalog/Bookings/Admin/SeatLocks`, `FakeWorld`, `WebDeps`, the rest of `Dtos`, `ArchitectureTest`; generation moves to `generate-sources`; SPEC 10 drops "in migration"; re-measure BASELINE | `src/main/java` has only root, `kernel`, `ports`, `adapters`, `web`, `features` |
@@ -232,6 +232,86 @@ Done on `feat/restructure-wave1`, with no behaviour change: no schema edit, `Api
 - **Prepared for wave 2:** `web.Query`, `web.Paging`, `web.Principal` and `CatalogCache.get` are public; `testing.TestDb` gives slice tests a migrated, seeded SQLite behind `ports.Db`.
 - **Closed since:** AGENTS.md rule 3 now names `kernel`, `ports`, the slices and the legacy `domain.port` (`ec925f7`).
 - **Guards:** `TargetArchitectureTest` now asserts that the real `kernel` (27 files) and `ports` (9 files) exist. It also copies the real tree, adds one bad import per rule and expects exactly those violations, so a rule that stopped matching real code fails the build.
+
+## Wave 2 record
+
+Done on `feat/restructure-wave2`. Both lanes were merged (`feat/slice-catalog-live` and `feat/slice-accounts`, each cut from step 0 at `229abe5`), then step 3 was applied in one commit per lane. No schema edit. `ApiSchemaTest`, both `EndToEndTest` journeys, `RbacTest`, `RbacMatrixTest`, `RecordGeneratorTest`, the architecture tests and every contract suite are green: **567 tests** (523 at step 0).
+
+The packaged app was smoke-tested with `STATIC_DIR` unset:
+
+- index, health, and cities (`ETag`, `Cache-Control`, 304)
+- register, login, refresh and `/api/me`
+- hold, booking, checkout, pay and ticket
+- admin stats, and owner cinemas refused (403) for an audience member
+- the SSE snapshot
+- the seat map `ETag` unchanged, and still a 304, after a restart on the same database
+
+**Step 3, lane A** (`2d590f1`):
+
+- `WebModules.routes` mounts `CatalogRoutes` and `LiveRoutes`. `LiveRoutes` also takes `BookingPolicy`, for the snapshot's `holdTtlSeconds`, which `LiveModule` got through `CatalogQueries`. This is a deviation from the brief.
+- Deleted: `CatalogModule` (131 lines), `LiveModule` (100), `CatalogQueries` (309) and 13 `Dtos` records (162).
+- Deleted tests: `CatalogQueriesTest` (267), `CatalogApiTest` (157) and `LiveSseTest` (102).
+- `WEB_RECORDS` points the catalog schemas at `CatalogDtos`. It also points `Price`, `Seat`, `SeatRow` and `SeatMap` at live's copies.
+
+**Step 3, lane B** (`34aeae0`):
+
+- `WebModules.routes` mounts `AuthRoutes.of(...)`. The `accounts`/`tokens` wiring and `claimsFor` left `WebModules`.
+- `Main` seeds the admin through the slice's `Accounts` on `sliceDb`.
+- Deleted: `AuthModule` (120), `web.JoltRefreshStore` (49), `application.Accounts` (129) and three `Dtos` records (16).
+- Deleted tests: `AccountsTest` (94) and `AuthApiTest` (222). `aTokenIssuedBeforeTheRoleRenameStillCountsAsAudience` was first moved to `RbacTest`.
+
+**Behaviour change, decided by the main session** (`e8b4c0a`):
+
+- The seat map `version` now hashes each status by name, not by the enum constant's identity hash. The same seat state therefore keeps the same `version` and `ETag` across restarts.
+- The type and range (unsigned 32 bits) are unchanged.
+- `SeatMapTest` loads the kernel in a second class loader and expects the same value. It also pins one state's value, and checks that holding or booking any single seat changes it.
+
+**Proxy diagnostics** (`07184ba`, `fe41157`):
+
+- `AppConfig` checks `TRUST_PROXY` with Jolt's parser at load. A bad entry fails startup with a message naming the variable.
+- `render.yaml` adds `fc00::/7`.
+- The `::ffff:a.b.c.d/N` blocks are not valid in Jolt v0.4.1, and are not needed. Jolt folds an IPv4-mapped literal to four bytes, so `/104` exceeds 32 bits, and a mapped peer already matches the IPv4 blocks.
+- At startup, `Main` logs `trustProxy=[...]`, or `trustProxy=none`.
+- Once per boot, `Main` logs the first non-health request:
+  - the peer address, only when untrusted
+  - whether `X-Forwarded-For` and `X-Forwarded-Proto` were present
+  - the proto, as `https`, `http` or `other`
+  - the inferred trust decision
+  - `req.scheme()`
+
+**Deleted in wave 2:** 1 047 main lines (7 classes and 16 `Dtos` records) and 842 test lines (5 test classes; one case was moved first).
+
+**Size** (`src/main/java` and `src/test/java`, files / lines):
+
+| | Baseline (`0893749`) | Wave 1 (`ec925f7`) | Step 0 (`229abe5`) | Wave 2 |
+|---|---:|---:|---:|---:|
+| main | 111 / 10 295 | 110 / 10 349 | 111 / 10 479 | 118 / 11 222 |
+| test | 58 / 9 821 | 93 / 13 836 | 100 / 14 760 | 105 / 16 029 |
+| tests run | 356 | 512 | 523 | 567 |
+
+Per package, from step 0 to wave 2:
+
+| Package | Step 0 (files / lines) | Wave 2 (files / lines) |
+|---|---:|---:|
+| `application` | 19 / 1 906 | 17 / 1 468 |
+| `web` | 22 / 2 948 | 18 / 2 357 |
+| `features` | 0 / 0 | 11 / 1 576 (`accounts` 432, `catalog` 854, `live` 290) |
+| `kernel` | 27 / 1 298 | 28 / 1 380 (adds `SeatMap`) |
+| root | 2 files | 3 files (adds `ProxyDiagnostics`) |
+
+`adapters.db` (2 740 lines), `domain.port` (386) and `ports` (217) are unchanged: `SqlCatalog`, `SqlSeatLocks` and `SqlBookings.Users` still serve admin and booking. Main code grew by 743 lines because each slice owns SQL that the legacy repositories still hold. That duplication goes in wave 6.
+
+**What a feature costs now.** Each wave 2 slice commit touched 2 directories: its `features/<slice>` main and test packages.
+
+| Commit | What | Files |
+|---|---|---:|
+| `d526543` | catalog | 5 |
+| `0a2a758` | live | 5 |
+| `d479c4f` | accounts | 4 |
+| `73e2e84` | accounts | 4 |
+| `6fc31aa` | `SeatMap` | 2 |
+
+At baseline, the owner feature touched 14 directories in 4 commits.
 
 ## Wave 2 briefs
 
@@ -410,6 +490,91 @@ mvn -B verify   # green before every commit (tests, spotless:check, jacoco)
 ### Step 3: integration lane, per lane, in one commit each
 
 The integration lane applies the lane's note, deletes the listed classes and `Dtos` records, updates `WEB_RECORDS`, and runs `mvn -B verify` and the packaged smoke run. Then it re-measures files and lines per package against [BASELINE.md](BASELINE.md).
+
+## Wave 3 brief: booking
+
+One lane, **booking** (`feat/slice-booking`), runs after a short **step 0** by the integration lane. Read [How to build a slice](#how-to-build-a-slice) first. Everything there holds, with booking in place of catalog.
+
+### Step 0: integration lane
+
+- **SliceKit port fakes.** `SliceKit` has no `Ids`, `PaymentGateway` or `SeatEvents` yet. Add these fakes under `testing`, each with its contract suite (`IdGeneratorContract`, `PaymentGatewayContract`, `SeatEventPublisherContract`):
+  - a sequential `Ids`
+  - a recording `PaymentGateway`, which builds the checkout URL from a base and records refunds
+  - a recording `SeatEvents`; or `FakeLive` implements both ports, as `LiveSeatHub` does
+
+  Expose them on `SliceKit` as `ids()`, `gateway()` and `events()`. `k.pipeline().idempotent()` and `k.pipeline().holdLimit()` already exist.
+- **Ticket view.** `SliceKit` serves the views on the class path, so `res.render("ticket", ...)` already works in slice tests. Change nothing unless a test proves otherwise.
+
+### Lane: booking (`feat/slice-booking`)
+
+**Owns** (new files only), under `src/main/java/dev/thiru/bms/features/booking/`:
+
+- **`BookingRoutes`**, a `RouteModule` for these routes:
+  - `POST /api/holds` (the hold limit, then idempotent)
+  - `DELETE /api/holds/:id`
+  - `POST /api/bookings` (idempotent)
+  - `GET /api/bookings` and `GET /api/bookings/:id`
+  - `POST /api/bookings/:id/checkout` (idempotent)
+  - `POST /api/bookings/:id/cancel` (idempotent)
+  - `GET /api/bookings/:id/ticket` (the `ticket` view)
+
+  The constructor takes the ports it uses: `BookingRoutes(Db db, SeatEvents events, Ids ids, Clock clock, BookingPolicy policy, PaymentGateway gateway, Middleware idempotent, Middleware holdLimit)`. It may instead take use case classes built from those ports.
+- **Use cases**, taken from `CreateHold`, `CreateBooking`, `Checkout`, `CancelBooking`, `BookingQueries` and `ExpireSweep`. The slice also keeps its own copies of:
+  - `Outcome`, which commits and then fails, for lazy expiry
+  - `BookingOps.apply`, `expire` and `ownedBooking`
+- **`BookingSql`** (split it if it grows large). It writes and reads `seat_hold`, `booking`, `booking_seat`, `payment` (insert on checkout, latest by booking) and `seat_lock`, from `SqlBookings.Holds/Bookings/Payments` and `SqlSeatLocks`.
+  - A `seat_lock` UNIQUE clash is `Db.ConstraintViolation`, and must give `SEAT_UNAVAILABLE` exactly as `SqlSeatLocks.lock` does.
+  - A `booking` update is `WHERE id = ? AND version = ?`. On a miss it re-reads and retries once, then gives `VERSION_CONFLICT` (SPEC 5.4).
+  - A booking's show info (movie title, cinema, screen, and the local date and time in the city's zone) is read in one join, as `CatalogSql` reads a show.
+- **Seat events** go through `Tx.afterCommit(() -> events.publish(...))`, never before the commit. A failing publish is logged and swallowed, as `EventBuffer.publishTo` does today.
+- **Local records**: `HoldRequest`, `BookingRequest`, `HoldDto`, `ShowInfoDto`, `BookingSeatDto`, `BookingDto` and `CheckoutDto`. Copy each component for component from `web.BookingModule` and `web.Dtos`.
+
+**Tests**, under `src/test/java/dev/thiru/bms/features/booking/**`, on `TestDb` and `SliceKit` with the V2 seed (take every date from `kit.seedDate()`):
+
+- Port `CreateHoldTest`, `CreateBookingTest`, `CheckoutTest`, `CancelBookingTest`, `ExpireSweepTest` and `BookingApiTest`.
+- Port the two `BookingQueries` cases of `AdminReportsAndQueriesTest`: `strangersGetNotFound...` and `ticketIsOwnerOnly...`.
+- Move `adapters.db.ConcurrentBuyersTest` onto the slice. Keep the same races, run against the slice's use cases on `TestDb`: many buyers, overlapping seats, one winner per seat, and the sweep running alongside.
+
+**Preserve exactly:**
+
+- Every status, problem `code` and message.
+- `Idempotency-Key` replay (`Idempotency-Replayed: true`) and the per-user hold limit. Both are pipeline middleware, passed in.
+- `no-store` on booking reads.
+- NOT_FOUND, never 403, for another user's booking. Admins may still read any booking through `GET /api/bookings/:id`.
+- Lazy expiry: commit the expiry, then answer 410.
+- The checkout cap (`MAX_CHECKOUTS`, 3).
+- Event order and reasons: `seat-held`, `seat-released` (with `EXPIRED`, `CANCELLED` or `RELEASED`) and `seat-booked`. The live stream and `EndToEndTest` observe them.
+
+**Hands back** (step 3):
+
+- `WebModules.routes`: replace the `BookingModule` block and the `BookingQueries bookings` line with one `pipeline.module(new BookingRoutes(...))`.
+- `Main`: schedule the slice's `ExpireSweep` on `sliceDb`, with `live` as the events port, instead of `application.ExpireSweep` on `uow`.
+- **Delete:**
+  - `web.BookingModule`
+  - `application.CreateHold`, `CreateBooking`, `Checkout`, `CancelBooking`, `BookingQueries`, `ExpireSweep` and `Outcome`
+  - the ported tests, and the two `BookingQueries` cases
+  - the `Dtos` records `HoldDto`, `ShowInfoDto`, `BookingSeatDto`, `BookingDto` and `CheckoutDto`
+- **Keep:**
+  - `EventBuffer` and `BookingOps`: `ProcessPaymentWebhook` and `CancelShow` use them until waves 4 and 5.
+  - the `SqlBookings` and `SqlSeatLocks` repositories: payments and admin use them until wave 6.
+- `WEB_RECORDS`: point `Hold`, `ShowInfo`, `BookingSeat`, `Booking`, `Checkout`, `HoldRequest` and `BookingRequest` at the slice records (replace).
+- **Swap proof:** with the swap applied and the legacy classes still in place, these stay green:
+  - `BookingApiTest` and `RbacTest`
+  - `OwnerApiTest`
+  - `AdminApiTest` (cancelling a show refunds bookings the slice wrote)
+  - both `EndToEndTest` journeys
+
+**Must stay green:**
+
+- `ConcurrentBuyersTest` until it moves, and `BookingApiTest` until step 3
+- `RbacTest`, `RbacMatrixTest`
+- `ApiSchemaTest` (no schema edit), `ApiCoverageTest`, `RecordGeneratorTest`
+- `EndToEndTest` (both journeys)
+- `ProcessPaymentWebhookTest`, `CancelShowTest`
+- `TargetArchitectureTest`, `ArchitectureTest`
+- `DbContract`, `LiveSeatsContract`, and the contracts named in step 0
+
+No `Permissions` or `RBAC.md` change.
 
 ## Instructions for a slice lane
 
