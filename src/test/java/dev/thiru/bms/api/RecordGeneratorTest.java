@@ -28,10 +28,14 @@ class RecordGeneratorTest {
 
     private static final String WEB = "dev.thiru.bms.web.";
 
-    /** Schema name to the web record serialised for it today. */
     private static final String JOLT_PAGE = "in.jolt.Page$Result";
 
-    static final Map<String, String> WEB_RECORDS = webRecords();
+    /**
+     * Schema name to every record serialised for it today. A shape shared by a moved slice and the
+     * legacy web layer (City, Cinema, MovieDetail while admin keeps its Dtos copy) lists both, and
+     * each is checked against the schema.
+     */
+    static final Map<String, List<String>> WEB_RECORDS = webRecords();
 
     /** Object schemas with no single web record: built as maps or rendered by hand. */
     static final Set<String> NO_WEB_RECORD =
@@ -43,8 +47,8 @@ class RecordGeneratorTest {
                     "SeatBookedEvent",
                     "HeartbeatEvent");
 
-    private static Map<String, String> webRecords() {
-        Map<String, String> m = new LinkedHashMap<>();
+    private static Map<String, List<String>> webRecords() {
+        Map<String, List<String>> m = new LinkedHashMap<>();
         String[][] dtos = {
             {"User", "UserDto"},
             {"AuthResponse", "AuthResponse"},
@@ -83,14 +87,14 @@ class RecordGeneratorTest {
             {"OwnedCinema", "OwnedCinemaDto"},
         };
         for (String[] d : dtos) {
-            m.put(d[0], WEB + "Dtos$" + d[1]);
+            add(m, d[0], WEB + "Dtos$" + d[1]);
         }
-        m.put("RegisterRequest", WEB + "AuthModule$RegisterRequest");
-        m.put("LoginRequest", WEB + "AuthModule$LoginRequest");
-        m.put("HoldRequest", WEB + "BookingModule$HoldRequest");
-        m.put("BookingRequest", WEB + "BookingModule$BookingRequest");
-        m.put("WebhookEvent", WEB + "PaymentModule$WebhookBody");
-        m.put("CompleteRequest", WEB + "PaymentModule$CompleteRequest");
+        add(m, "RegisterRequest", WEB + "AuthModule$RegisterRequest");
+        add(m, "LoginRequest", WEB + "AuthModule$LoginRequest");
+        add(m, "HoldRequest", WEB + "BookingModule$HoldRequest");
+        add(m, "BookingRequest", WEB + "BookingModule$BookingRequest");
+        add(m, "WebhookEvent", WEB + "PaymentModule$WebhookBody");
+        add(m, "CompleteRequest", WEB + "PaymentModule$CompleteRequest");
         for (String r :
                 List.of(
                         "CityRequest",
@@ -100,7 +104,7 @@ class RecordGeneratorTest {
                         "MovieRequest",
                         "ShowRequest",
                         "CancelShowResult")) {
-            m.put(r, WEB + "AdminModule$" + r);
+            add(m, r, WEB + "AdminModule$" + r);
         }
         for (String page :
                 List.of(
@@ -110,9 +114,13 @@ class RecordGeneratorTest {
                         "ShowReportPage",
                         "AccountPage")) {
             // The paging envelope is Jolt's own record since v0.4.1 (web.Paging builds it).
-            m.put(page, JOLT_PAGE);
+            add(m, page, JOLT_PAGE);
         }
         return m;
+    }
+
+    private static void add(Map<String, List<String>> m, String schema, String record) {
+        m.computeIfAbsent(schema, k -> new ArrayList<>()).add(record);
     }
 
     private final OpenApi api = OpenApi.load();
@@ -147,29 +155,62 @@ class RecordGeneratorTest {
 
     @Test
     void eachGeneratedRecordMatchesTheWebRecordItWillReplace() throws Exception {
+        assertEquals(List.of(), mismatches(WEB_RECORDS, generated));
+    }
+
+    /** A record a slice might write for City, with the schema's components. */
+    record SliceCity(String id, String name, String timeZone) {}
+
+    /** A slice copy of City that dropped a component. */
+    record DriftedCity(String id, String name) {}
+
+    @Test
+    void aSchemaMappedToSeveralRecordsChecksEachOfThem() throws Exception {
+        String dto = WEB + "Dtos$CityDto";
+        String slice = RecordGeneratorTest.class.getName() + "$SliceCity";
+        String drifted = RecordGeneratorTest.class.getName() + "$DriftedCity";
+        assertEquals(List.of(), mismatches(Map.of("City", List.of(dto, slice)), generated));
+        List<String> found = mismatches(Map.of("City", List.of(dto, drifted, slice)), generated);
+        assertEquals(1, found.size(), found.toString());
+        assertTrue(found.get(0).contains("DriftedCity"), found.get(0));
+    }
+
+    /** Every record whose components differ from its schema's generated record. */
+    static List<String> mismatches(
+            Map<String, List<String>> records, Map<String, String> generatedSources)
+            throws ClassNotFoundException {
+        // Record types are named by binary name first (two slices may both have a CityDto), then
+        // by simple name for the legacy Dtos records.
         Map<String, String> webToSchema = new LinkedHashMap<>();
-        WEB_RECORDS.forEach((schema, cls) -> webToSchema.putIfAbsent(simple(cls), schema));
+        records.forEach(
+                (schema, classes) ->
+                        classes.forEach(
+                                cls -> {
+                                    webToSchema.putIfAbsent(cls, schema);
+                                    webToSchema.putIfAbsent(simple(cls), schema);
+                                }));
         List<String> mismatches = new ArrayList<>();
-        for (Map.Entry<String, String> e : WEB_RECORDS.entrySet()) {
-            List<String> want = components(generated.get(e.getKey()));
-            List<String> have = new ArrayList<>();
-            for (RecordComponent c : Class.forName(e.getValue()).getRecordComponents()) {
-                have.add(
-                        normalise(c.getGenericType().getTypeName(), webToSchema)
-                                + " "
-                                + c.getName());
-            }
-            if (e.getValue().equals(JOLT_PAGE)) {
-                // Generic envelope: compare names only, the item type is the page's own.
-                want = want.stream().map(s -> s.substring(s.lastIndexOf(' ') + 1)).toList();
-                have = have.stream().map(s -> s.substring(s.lastIndexOf(' ') + 1)).toList();
-            }
-            if (!want.equals(have)) {
-                mismatches.add(
-                        e.getKey() + ": schema " + want + " vs " + e.getValue() + " " + have);
+        for (Map.Entry<String, List<String>> e : records.entrySet()) {
+            for (String cls : e.getValue()) {
+                List<String> want = components(generatedSources.get(e.getKey()));
+                List<String> have = new ArrayList<>();
+                for (RecordComponent c : Class.forName(cls).getRecordComponents()) {
+                    have.add(
+                            normalise(c.getGenericType().getTypeName(), webToSchema)
+                                    + " "
+                                    + c.getName());
+                }
+                if (cls.equals(JOLT_PAGE)) {
+                    // Generic envelope: compare names only, the item type is the page's own.
+                    want = want.stream().map(s -> s.substring(s.lastIndexOf(' ') + 1)).toList();
+                    have = have.stream().map(s -> s.substring(s.lastIndexOf(' ') + 1)).toList();
+                }
+                if (!want.equals(have)) {
+                    mismatches.add(e.getKey() + ": schema " + want + " vs " + cls + " " + have);
+                }
             }
         }
-        assertEquals(List.of(), mismatches);
+        return mismatches;
     }
 
     private static final Pattern COMPONENT =
@@ -194,8 +235,12 @@ class RecordGeneratorTest {
         Matcher m = Pattern.compile("[\\w.$]+").matcher(type);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
-            String s = simple(m.group());
-            m.appendReplacement(sb, Matcher.quoteReplacement(webToSchema.getOrDefault(s, s)));
+            String name = m.group();
+            String s =
+                    webToSchema.containsKey(name)
+                            ? webToSchema.get(name)
+                            : webToSchema.getOrDefault(simple(name), simple(name));
+            m.appendReplacement(sb, Matcher.quoteReplacement(s));
         }
         m.appendTail(sb);
         return sb.toString().replace(",", ", ").replace(",  ", ", ");
