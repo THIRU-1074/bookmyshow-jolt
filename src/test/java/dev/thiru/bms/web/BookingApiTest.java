@@ -275,6 +275,19 @@ class BookingApiTest {
                 .expect(401)
                 .jsonEquals("code", "UNAUTHENTICATED");
         kit.http.post("/api/payments/webhook").json(Map.of()).expect(401);
+        byte[] body = "{\"eventId\":\"e\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        long now = kit.world.clock.instant().getEpochSecond();
+        // Tampered body, wrong secret's format, stale and future timestamps are all 401.
+        kit.signedWebhook(
+                        "{\"eventId\":\"f\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        now,
+                        WebKit.sign(now, body))
+                .expect(401);
+        kit.signedWebhook(body, now - 301, WebKit.sign(now - 301, body))
+                .expect(401)
+                .jsonEquals("code", "UNAUTHENTICATED");
+        kit.signedWebhook(body, now + 301, WebKit.sign(now + 301, body)).expect(401);
+        kit.signedWebhook(body, now - 300, WebKit.sign(now - 300, body)).expect(422);
         kit.webhook("evt-x", "payment.refunded", payment, 15000).expect(422).jsonHas("errors.type");
         kit.webhook("evt-y", "payment.succeeded", payment, 1)
                 .expect(422)

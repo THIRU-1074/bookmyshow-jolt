@@ -9,11 +9,10 @@ import dev.thiru.bms.adapters.db.SqliteUnitOfWork;
 import dev.thiru.bms.adapters.ids.SecureIds;
 import dev.thiru.bms.adapters.live.LiveSeatHub;
 import dev.thiru.bms.adapters.live.SeatEvents;
-import dev.thiru.bms.adapters.payment.HmacVerifier;
-import dev.thiru.bms.adapters.payment.HmacWebhookVerifier;
 import dev.thiru.bms.adapters.payment.MockGatewayClient;
 import dev.thiru.bms.adapters.payment.MockGatewaySender;
 import dev.thiru.bms.adapters.payment.MockPaymentGateway;
+import dev.thiru.bms.adapters.payment.WebhookSigner;
 import dev.thiru.bms.application.Accounts;
 import dev.thiru.bms.application.ExpireSweep;
 import dev.thiru.bms.web.WebDeps;
@@ -142,7 +141,7 @@ public final class Main {
             SqlRefreshTokens refreshTokens = new SqlRefreshTokens(db);
             SqlIdempotency idempotency = new SqlIdempotency(db);
 
-            HmacVerifier hmac = new HmacVerifier(config.webhookSecret(), clock);
+            WebhookSigner signer = new WebhookSigner(config.webhookSecret());
             URI webhook = URI.create(config.publicBaseUrl() + "/api/payments/webhook");
             HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
             WebDeps deps =
@@ -156,13 +155,13 @@ public final class Main {
                             idempotency,
                             new MockPaymentGateway(config.publicBaseUrl()),
                             live,
-                            new HmacWebhookVerifier(hmac),
                             new MockGatewaySender(
-                                    new MockGatewayClient(http, hmac, clock, webhook)),
+                                    new MockGatewayClient(http, signer, clock, webhook)),
                             live,
                             () -> dbUp(db),
                             new WebDeps.Settings(
                                     config.jwtSecret(),
+                                    config.webhookSecret(),
                                     config.mockGateway(),
                                     viewsDir,
                                     SSE_HEARTBEAT));

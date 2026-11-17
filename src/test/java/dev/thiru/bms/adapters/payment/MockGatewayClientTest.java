@@ -60,21 +60,20 @@ class MockGatewayClientTest {
                 });
         server.start();
         try {
-            HmacVerifier verifier = new HmacVerifier("s3cret", CLOCK);
+            WebhookSigner signer = new WebhookSigner("s3cret");
             URI url =
                     URI.create(
                             "http://127.0.0.1:"
                                     + server.getAddress().getPort()
                                     + "/api/payments/webhook");
             MockGatewayClient client =
-                    new MockGatewayClient(HttpClient.newHttpClient(), verifier, CLOCK, url);
+                    new MockGatewayClient(HttpClient.newHttpClient(), signer, CLOCK, url);
 
             assertEquals(200, client.post(EVENT));
 
             assertEquals(EVENT.toJson(), body.get());
             assertEquals(Long.toString(NOW.getEpochSecond()), ts.get());
-            assertEquals(
-                    HmacVerifier.Outcome.VALID, verifier.verify(ts.get(), sig.get(), body.get()));
+            assertEquals(signer.sign(NOW.getEpochSecond(), body.get()), sig.get());
             assertEquals("application/json", contentType.get());
         } finally {
             server.stop(0);

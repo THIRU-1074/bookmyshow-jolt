@@ -12,8 +12,6 @@ import java.time.Instant;
 /**
  * Mock gateway side of the webhook: signs an event and POSTs it over real HTTP to the app's own
  * webhook endpoint (SPEC section 7).
- *
- * <p>TODO(jolt#59): signing lives in {@link HmacVerifier} until Jolt ships webhook support.
  */
 public final class MockGatewayClient {
 
@@ -70,11 +68,11 @@ public final class MockGatewayClient {
     }
 
     private final HttpClient http;
-    private final HmacVerifier signer;
+    private final WebhookSigner signer;
     private final Clock clock;
     private final URI webhookUrl;
 
-    public MockGatewayClient(HttpClient http, HmacVerifier signer, Clock clock, URI webhookUrl) {
+    public MockGatewayClient(HttpClient http, WebhookSigner signer, Clock clock, URI webhookUrl) {
         this.http = http;
         this.signer = signer;
         this.clock = clock;

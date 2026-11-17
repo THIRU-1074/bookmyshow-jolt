@@ -25,6 +25,7 @@ import in.jolt.Middleware;
 import in.jolt.RateLimit;
 import in.jolt.RequestId;
 import in.jolt.SecurityHeaders;
+import in.jolt.Webhooks;
 import in.jolt.auth.JwtAuth;
 import in.jolt.auth.RefreshTokens;
 import java.time.Duration;
@@ -45,6 +46,9 @@ public final class WebModules {
     static final String CSP =
             "default-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; "
                     + "form-action 'self'";
+
+    /** SPEC 7: a webhook timestamp more than 300 s from now is rejected. */
+    static final Duration WEBHOOK_TOLERANCE = Duration.ofSeconds(300);
 
     private WebModules() {}
 
@@ -139,7 +143,11 @@ public final class WebModules {
                 new PaymentModule(
                         new ProcessPaymentWebhook(
                                 deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
-                        deps.webhookVerifier(),
+                        Webhooks.hmacSha256(settings.webhookSecret(), "Bms-Signature")
+                                .prefix("v1=")
+                                .timestampHeader("Bms-Timestamp")
+                                .tolerance(WEBHOOK_TOLERANCE)
+                                .clock(deps.clock()),
                         mock,
                         mapper));
         AdminCatalog adminCatalog = new AdminCatalog(deps.uow(), deps.clock());
