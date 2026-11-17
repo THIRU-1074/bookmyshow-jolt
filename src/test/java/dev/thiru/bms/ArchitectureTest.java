@@ -42,7 +42,26 @@ class ArchitectureTest {
     }
 
     @Test
-    void domainImportsOnlyTheJdk() {
+    void kernelImportsOnlyTheJdk() {
+        assertEquals(
+                List.of(),
+                violations(
+                        "kernel",
+                        List.of(
+                                "import in.jolt.",
+                                "import java.sql.",
+                                "import javax.sql.",
+                                "import " + APP + "domain.",
+                                "import " + APP + "ports.",
+                                "import " + APP + "application.",
+                                "import " + APP + "adapters.",
+                                "import " + APP + "web.",
+                                "import " + APP + "features.")));
+    }
+
+    /** The repository ports left in {@code domain.port} until wave 6 deletes them. */
+    @Test
+    void legacyRepositoryPortsImportOnlyTheKernelPortsAndTheJdk() {
         assertEquals(
                 List.of(),
                 violations(
@@ -53,7 +72,8 @@ class ArchitectureTest {
                                 "import javax.sql.",
                                 "import " + APP + "application.",
                                 "import " + APP + "adapters.",
-                                "import " + APP + "web.")));
+                                "import " + APP + "web.",
+                                "import " + APP + "features.")));
     }
 
     @Test

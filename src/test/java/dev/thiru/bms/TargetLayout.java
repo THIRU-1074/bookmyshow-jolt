@@ -71,6 +71,9 @@ final class TargetLayout {
             if (dep.startsWith(BASE + "adapters.")) {
                 return "features never import adapters";
             }
+            if (dep.startsWith(BASE + "domain.") || dep.startsWith(BASE + "application.")) {
+                return "features never import the legacy layers";
+            }
             if (dep.startsWith(BASE + "features.")) {
                 String other = sliceOf(dep);
                 if (!other.equals(slice)) {
