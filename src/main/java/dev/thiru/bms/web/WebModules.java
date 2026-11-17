@@ -16,17 +16,10 @@ import dev.thiru.bms.application.UserAdmin;
 import dev.thiru.bms.kernel.account.Role;
 import dev.thiru.bms.kernel.account.User;
 import in.jolt.App;
-import in.jolt.Compress;
-import in.jolt.Csrf;
 import in.jolt.HttpException;
 import in.jolt.JsonMapper;
-import in.jolt.Logger;
 import in.jolt.Middleware;
-import in.jolt.RateLimit;
-import in.jolt.RequestId;
-import in.jolt.SecurityHeaders;
 import in.jolt.Webhooks;
-import in.jolt.auth.JwtAuth;
 import in.jolt.auth.RefreshTokens;
 import java.time.Duration;
 import java.util.Map;
@@ -36,80 +29,60 @@ import java.util.Map;
  * {@link #install} once before {@code listen}, then registers static files after it so API routes
  * win over the SPA fallback.
  *
- * <p>Middleware order is SPEC 9: request id, request log, security headers, problem mapping, gzip,
- * IP rate limits, CSRF on cookie routes, then the RBAC gate (JWT and role checks, see {@link
- * Permissions}) with prefix-wide role layers on {@code /api/admin} and {@code /api/owner}, per-user
- * rate limits and Idempotency-Key as route middleware.
+ * <p>{@link #install} is the {@link HttpPipeline} (SPEC 9 middleware, RBAC gate, problems,
+ * idempotency) followed by {@link #routes}, the route registration. Each line of {@link #routes}
+ * mounts one route module; when a feature slice replaces a legacy module, that one line changes.
  */
 public final class WebModules {
-
-    static final String CSP =
-            "default-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; "
-                    + "form-action 'self'";
 
     /** SPEC 7: a webhook timestamp more than 300 s from now is rejected. */
     static final Duration WEBHOOK_TOLERANCE = Duration.ofSeconds(300);
 
     private WebModules() {}
 
-    /** Registers middleware and every route module on {@code app}. */
-    public static void install(App app, WebDeps deps) {
-        JsonMapper mapper = app.config().jsonMapper();
-        WebDeps.Settings settings = deps.settings();
-        if (settings.viewsDir() == null) {
-            app.viewsClasspath("/views", null);
-        } else {
-            app.views(settings.viewsDir());
-        }
-        Problems.install(app);
+    /** Installs the pipeline, then every route module, on {@code app}. */
+    public static HttpPipeline install(App app, WebDeps deps) {
+        HttpPipeline pipeline = HttpPipeline.install(app, pipelineConfig(deps));
+        routes(pipeline, deps);
+        return pipeline;
+    }
 
-        JwtAuth jwt = JwtAuth.hs256(settings.jwtSecret());
+    /** The pipeline settings carried by {@code deps}. */
+    public static HttpPipeline.Config pipelineConfig(WebDeps deps) {
+        WebDeps.Settings settings = deps.settings();
+        return new HttpPipeline.Config(
+                settings.jwtSecret(),
+                deps.clock(),
+                deps.idempotency(),
+                settings.mockGateway(),
+                settings.viewsDir());
+    }
+
+    /** Registers every route module behind {@code pipeline}. */
+    public static void routes(HttpPipeline pipeline, WebDeps deps) {
+        App app = pipeline.app();
+        JsonMapper mapper = pipeline.mapper();
+        WebDeps.Settings settings = deps.settings();
+        Middleware idempotent = pipeline.idempotent();
+
         Accounts accounts = new Accounts(deps.uow(), deps.hasher(), deps.clock());
         RefreshTokens tokens =
-                RefreshTokens.of(jwt)
+                RefreshTokens.of(pipeline.jwt())
                         .accessTtl(AuthModule.ACCESS_TTL)
                         .refreshTtl(AuthModule.REFRESH_TTL)
                         .store(new JoltRefreshStore(deps.refreshTokens()))
                         // Re-read on every issue and refresh: a demotion or deletion is picked up
                         // the next time the access token is renewed.
                         .claims(subject -> claimsFor(accounts, subject));
-        Rbac rbac = new Rbac(jwt);
-
-        app.use(RequestId.middleware());
-        app.use(Logger.requests());
-        app.use(
-                SecurityHeaders.defaults()
-                        .csp(CSP)
-                        .hsts(Duration.ofDays(365), req -> "https".equalsIgnoreCase(req.scheme())));
-        app.use(Problems.middleware());
-        app.use(Compress.gzip());
-
-        Duration minute = Duration.ofMinutes(1);
-        app.use("/api/auth/login", RateLimit.perIp(10, minute));
-        app.use("/api/auth/register", RateLimit.perIp(10, minute));
-        app.use("/api/auth/refresh", RateLimit.perIp(30, minute));
-        app.use("/api/auth", Csrf.protect());
-        app.use("/api", rbac.gate());
-        app.use("/api/admin", rbac.adminLayer());
-        app.use("/api/owner", rbac.ownerLayer());
-        CatalogCache catalogCache = new CatalogCache(deps.clock());
-        catalogCache.metrics(app.metrics());
-        app.use("/api/admin", catalogCache.clearAfterWrites());
-        app.use("/api/owner", catalogCache.clearAfterWrites());
-
-        Middleware idempotent = Idempotent.required(deps.idempotency());
-        // Runs after the gate, so "user" is the verified subject.
-        Middleware holdLimit = RateLimit.perKey(20, minute, req -> "user:" + req.attr("user"));
-
         CatalogQueries catalog = new CatalogQueries(deps.uow(), deps.clock(), deps.policy());
         BookingQueries bookings = new BookingQueries(deps.uow());
 
-        app.module(new AuthModule(accounts, tokens));
-        app.module(new CatalogModule(catalog, catalogCache));
-        app.module(
+        pipeline.module(new AuthModule(accounts, tokens));
+        pipeline.module(new CatalogModule(catalog, pipeline.catalogCache()));
+        pipeline.module(
                 new LiveModule(
                         catalog, deps.live(), deps.clock(), settings.sseHeartbeat(), mapper));
-        app.module(
+        pipeline.module(
                 new BookingModule(
                         new CreateHold(
                                 deps.uow(),
@@ -129,25 +102,14 @@ public final class WebModules {
                         new CancelBooking(
                                 deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
                         idempotent,
-                        holdLimit));
+                        pipeline.holdLimit()));
 
-        MockGatewayPayments mock = null;
-        if (settings.mockGateway()) {
-            mock = new MockGatewayPayments(deps.uow(), deps.mockSender(), deps.ids(), deps.clock());
-            Middleware completeLimit = RateLimit.perIp(30, minute);
-            Middleware csrf = Csrf.protect();
-            app.use(
-                    "/mock-gateway",
-                    (req, res, next) -> {
-                        if ("POST".equals(req.method())) {
-                            completeLimit.handle(req, res, () -> csrf.handle(req, res, next));
-                        } else {
-                            next.run();
-                        }
-                    });
-            app.use("/mock-gateway", rbac.gate());
-        }
-        app.module(
+        MockGatewayPayments mock =
+                settings.mockGateway()
+                        ? new MockGatewayPayments(
+                                deps.uow(), deps.mockSender(), deps.ids(), deps.clock())
+                        : null;
+        pipeline.module(
                 new PaymentModule(
                         new ProcessPaymentWebhook(
                                 deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
@@ -162,7 +124,7 @@ public final class WebModules {
         AdminReports reports = new AdminReports(deps.uow(), deps.clock());
         CancelShow cancelShow =
                 new CancelShow(deps.uow(), deps.gateway(), deps.publisher(), deps.clock());
-        app.module(
+        pipeline.module(
                 new AdminModule(
                         adminCatalog,
                         reports,
@@ -170,7 +132,7 @@ public final class WebModules {
                         new UserAdmin(deps.uow()),
                         deps.live(),
                         idempotent));
-        app.module(new OwnerModule(adminCatalog, reports, cancelShow, idempotent));
+        pipeline.module(new OwnerModule(adminCatalog, reports, cancelShow, idempotent));
         // The same check feeds /_jolt/health; /api/health keeps its own JSON shape for Render.
         // TODO(jolt#84): run the registered checks for /api/health once Jolt exposes them.
         app.health("db", () -> deps.dbUp().getAsBoolean());

@@ -40,7 +40,7 @@ class OpsApiTest {
     @Test
     void securityHeadersAreOnEveryResponse() {
         var res = kit.http.get("/api/cities").expect(200);
-        assertEquals(WebModules.CSP, res.header("Content-Security-Policy"));
+        assertEquals(HttpPipeline.CSP, res.header("Content-Security-Policy"));
         assertEquals("nosniff", res.header("X-Content-Type-Options"));
         assertEquals(null, res.header("Strict-Transport-Security"));
     }
