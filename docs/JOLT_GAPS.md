@@ -28,19 +28,19 @@ Not needed for v1: [#63](https://github.com/THIRU-1074/custom-Http-Server/issues
 
 ## Where each workaround lives
 
-Found with `grep -rn "TODO(jolt#" src`. Gaps with no marker yet have no workaround code merged in this branch.
+Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a marker; #63 needs none.
 
 | Jolt issue | File holding the workaround |
 |---|---|
 | #52 | `src/main/java/dev/thiru/bms/web/Query.java` |
-| #53 | none yet (`Main` sweeper start and shutdown hook) |
+| #53 | `src/main/java/dev/thiru/bms/Main.java` (`startSweeper`, `Booted.close` from a shutdown hook) |
 | #54 | `src/main/java/dev/thiru/bms/web/IdempotencyFilter.java`, `adapters/db/SqlIdempotency.java`, `src/main/resources/db/migrations/V3__idempotency.sql` |
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
 | #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
 | #57 | `src/main/java/dev/thiru/bms/web/PageRequest.java`, `PageResult.java` |
-| #58 | none yet (sweeper in `Main`) |
-| #59 | `src/main/java/dev/thiru/bms/adapters/payment/HmacVerifier.java`, `MockGatewayClient.java` (signing) |
-| #60 | none yet (`AppConfig.fromEnv()`) |
+| #58 | `src/main/java/dev/thiru/bms/Main.java` (`startSweeper` on a virtual-thread `ScheduledExecutorService`) |
+| #59 | `src/main/java/dev/thiru/bms/adapters/payment/HmacVerifier.java`, `HmacWebhookVerifier.java`, `MockGatewayClient.java` (signing) |
+| #60 | `src/main/java/dev/thiru/bms/AppConfig.java` |
 | #61 | `src/main/java/dev/thiru/bms/web/BookingModule.java`, `AdminModule.java` (required-field checks) |
 | #62 | `src/main/java/dev/thiru/bms/adapters/live/SeatEvents.java` |
 | #68 | `src/main/java/dev/thiru/bms/Main.java`, `Dockerfile` |
