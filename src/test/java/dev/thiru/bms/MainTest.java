@@ -25,6 +25,24 @@ class MainTest {
     }
 
     @Test
+    void rootAndClientRoutesServeIndexHtml() {
+        http.get("/").expect(200).bodyContains("<title>BookMyShow on Jolt</title>");
+        http.get("/movies/1")
+                .header("Accept", "text/html")
+                .expect(200)
+                .bodyContains("<title>BookMyShow on Jolt</title>");
+        http.get("/css/app.css").expect(200);
+    }
+
+    @Test
+    void apiPathsNeverFallBackToTheSpaEvenForBrowsers() {
+        http.get("/api/nope")
+                .header("Accept", "text/html")
+                .expect(404)
+                .header("Content-Type", "application/problem+json; charset=utf-8");
+    }
+
+    @Test
     void portDefaultsTo8080AndRejectsOutOfRange() {
         assertEquals(8080, Main.port(null));
         assertEquals(8080, Main.port(" "));

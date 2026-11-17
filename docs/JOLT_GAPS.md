@@ -17,7 +17,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | Configuration loader | [#60](https://github.com/THIRU-1074/custom-Http-Server/issues/60) | `AppConfig.fromEnv()` | open |
 | Nested and collection validation | [#61](https://github.com/THIRU-1074/custom-Http-Server/issues/61) | hold and layout validators in `web` | open |
 | Pub/sub hub for SSE | [#62](https://github.com/THIRU-1074/custom-Http-Server/issues/62) | `adapters.live.SeatEvents` | open |
-| Static files and views from the classpath | [#68](https://github.com/THIRU-1074/custom-Http-Server/issues/68) | `Main` (`STATIC_DIR`, `VIEWS_DIR`), `Dockerfile` | in progress |
+| Static files and views from the classpath | [#68](https://github.com/THIRU-1074/custom-Http-Server/issues/68) | `Main` (`Static.serve("/", STATIC_DIR).spaFallback("index.html")`, `VIEWS_DIR`), `Dockerfile` | in progress |
 | `JoltTest` support for SSE and streams | [#69](https://github.com/THIRU-1074/custom-Http-Server/issues/69) | SSE tests over a loopback socket | open |
 | SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | `snapshot` event on every connect | open |
 | App-defined metrics and health checks | [#71](https://github.com/THIRU-1074/custom-Http-Server/issues/71) | `GET /api/health` DB check, `GET /api/admin/stats` | open |
