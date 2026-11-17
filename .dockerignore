@@ -11,3 +11,6 @@ data/
 *.iml
 Dockerfile
 .dockerignore
+web/node_modules/
+web/dist/
+web/screenshots/

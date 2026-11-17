@@ -1,4 +1,13 @@
 # syntax=docker/dockerfile:1
+# UI stage: build the React app to static files. Node exists only here, never at runtime.
+FROM node:20-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+# Cap the heap so the build fits small builders (Render free tier).
+RUN NODE_OPTIONS=--max-old-space-size=768 npm run build
+
 # Build stage: compile and collect runtime dependencies (tests run in CI, not here).
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
@@ -18,7 +27,7 @@ RUN groupadd --system --gid 10001 bms \
 WORKDIR /app
 COPY --from=build /build/lib /app/lib
 # Static UI and views are served from the filesystem until jolt#68 ships.
-COPY --from=build /build/src/main/resources/static /app/static
+COPY --from=web /web/dist /app/static
 COPY --from=build /build/src/main/resources/views /app/views
 ENV PORT=8080 \
     JOLT_BIND_ADDRESS=0.0.0.0 \
