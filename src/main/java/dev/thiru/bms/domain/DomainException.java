@@ -21,7 +21,11 @@ public final class DomainException extends RuntimeException {
         PAYMENT_IN_PROGRESS,
         SHOW_STARTED,
         LIMIT_EXCEEDED,
-        VERSION_CONFLICT
+        VERSION_CONFLICT,
+        /** Business conflict with no finer code: duplicate email, entity still in use. */
+        CONFLICT,
+        /** Bad credentials; the web layer answers 401. */
+        UNAUTHENTICATED
     }
 
     private final Code code;
@@ -95,6 +99,15 @@ public final class DomainException extends RuntimeException {
 
     public static DomainException limitExceeded(String message) {
         return new DomainException(Code.LIMIT_EXCEEDED, message, Map.of(), List.of());
+    }
+
+    public static DomainException conflict(String message) {
+        return new DomainException(Code.CONFLICT, message, Map.of(), List.of());
+    }
+
+    public static DomainException unauthenticated() {
+        return new DomainException(
+                Code.UNAUTHENTICATED, "Invalid credentials", Map.of(), List.of());
     }
 
     public static DomainException versionConflict() {

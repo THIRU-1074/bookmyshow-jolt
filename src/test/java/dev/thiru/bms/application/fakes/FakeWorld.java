@@ -11,6 +11,7 @@ import dev.thiru.bms.domain.HoldStatus;
 import dev.thiru.bms.domain.Movie;
 import dev.thiru.bms.domain.Page;
 import dev.thiru.bms.domain.Payment;
+import dev.thiru.bms.domain.PaymentStatus;
 import dev.thiru.bms.domain.Screen;
 import dev.thiru.bms.domain.SeatHold;
 import dev.thiru.bms.domain.SeatId;
@@ -19,6 +20,7 @@ import dev.thiru.bms.domain.Show;
 import dev.thiru.bms.domain.ShowFormat;
 import dev.thiru.bms.domain.ShowStatus;
 import dev.thiru.bms.domain.User;
+import dev.thiru.bms.domain.port.AdminRepositories;
 import dev.thiru.bms.domain.port.BookingRepositories;
 import dev.thiru.bms.domain.port.CatalogRepositories;
 import dev.thiru.bms.domain.port.IdGenerator;
@@ -125,6 +127,8 @@ public final class FakeWorld
 
     private Data d = new Data();
     private int idCounter;
+    private long userSeq;
+    private long entitySeq = 1000;
     private final Random random = new Random(1);
 
     public final TestClock clock = new TestClock(T0);
@@ -462,8 +466,18 @@ public final class FakeWorld
             }
 
             public User insert(User user) {
-                d.users.put(user.id(), user);
-                return user;
+                User saved =
+                        user.id() != 0
+                                ? user
+                                : new User(
+                                        ++userSeq,
+                                        user.email(),
+                                        user.passwordHash(),
+                                        user.name(),
+                                        user.roles(),
+                                        user.createdAt());
+                d.users.put(saved.id(), saved);
+                return saved;
             }
         };
     }
@@ -701,5 +715,215 @@ public final class FakeWorld
     @Override
     public BookingRepositories.PaymentEvents paymentEvents() {
         return (eventId, paymentId, type, receivedAt) -> d.events.add(eventId);
+    }
+
+    @Override
+    public AdminRepositories.CatalogWrites catalogWrites() {
+        return new AdminRepositories.CatalogWrites() {
+            public City saveCity(City city) {
+                d.cities.put(city.id(), city);
+                return city;
+            }
+
+            public Cinema saveCinema(Cinema c) {
+                Cinema saved =
+                        c.id() != 0
+                                ? c
+                                : new Cinema(++entitySeq, c.cityId(), c.name(), c.address());
+                d.cinemas.put(saved.id(), saved);
+                return saved;
+            }
+
+            public boolean cinemaNameTaken(String cityId, String name, long exceptId) {
+                return d.cinemas.values().stream()
+                        .anyMatch(
+                                c ->
+                                        c.id() != exceptId
+                                                && c.cityId().equals(cityId)
+                                                && c.name().equalsIgnoreCase(name));
+            }
+
+            public void deleteCinema(long id) {
+                d.cinemas.remove(id);
+            }
+
+            public boolean cinemaHasShows(long id) {
+                return d.shows.values().stream()
+                        .anyMatch(s -> d.screens.get(s.screenId()).cinemaId() == id);
+            }
+
+            public Screen saveScreen(Screen s) {
+                Screen saved =
+                        s.id() != 0
+                                ? s
+                                : new Screen(++entitySeq, s.cinemaId(), s.name(), s.layout());
+                d.screens.put(saved.id(), saved);
+                return saved;
+            }
+
+            public boolean screenNameTaken(long cinemaId, String name, long exceptId) {
+                return d.screens.values().stream()
+                        .anyMatch(
+                                s ->
+                                        s.id() != exceptId
+                                                && s.cinemaId() == cinemaId
+                                                && s.name().equalsIgnoreCase(name));
+            }
+
+            public void deleteScreen(long id) {
+                d.screens.remove(id);
+            }
+
+            public boolean screenHasShows(long id) {
+                return d.shows.values().stream().anyMatch(s -> s.screenId() == id);
+            }
+
+            public boolean screenHasFutureShows(long id, Instant now) {
+                return d.shows.values().stream()
+                        .anyMatch(
+                                s ->
+                                        s.screenId() == id
+                                                && s.status() == ShowStatus.SCHEDULED
+                                                && s.startsAt().isAfter(now));
+            }
+
+            public Movie saveMovie(Movie m) {
+                Movie saved =
+                        m.id() != 0
+                                ? m
+                                : new Movie(
+                                        ++entitySeq,
+                                        m.title(),
+                                        m.languages(),
+                                        m.genres(),
+                                        m.certificate(),
+                                        m.durationMinutes(),
+                                        m.releaseDate(),
+                                        m.posterUrl(),
+                                        m.description());
+                d.movies.put(saved.id(), saved);
+                return saved;
+            }
+
+            public void deleteMovie(long id) {
+                d.movies.remove(id);
+            }
+
+            public boolean movieHasShows(long id) {
+                return d.shows.values().stream().anyMatch(s -> s.movieId() == id);
+            }
+
+            public Show insertShow(Show s) {
+                Show saved =
+                        new Show(
+                                ++entitySeq,
+                                s.movieId(),
+                                s.screenId(),
+                                s.startsAt(),
+                                s.endsAt(),
+                                s.language(),
+                                s.format(),
+                                s.prices(),
+                                s.status());
+                d.shows.put(saved.id(), saved);
+                return saved;
+            }
+        };
+    }
+
+    @Override
+    public AdminRepositories.Reports reports() {
+        return new AdminRepositories.Reports() {
+            public Page<AdminRepositories.ShowStat> showStats(
+                    String cityId, Instant from, Instant to, int page, int size) {
+                return slice(
+                        d.shows.values().stream()
+                                .filter(s -> cityId == null || playsIn(s, cityId))
+                                .filter(
+                                        s ->
+                                                !s.startsAt().isBefore(from)
+                                                        && s.startsAt().isBefore(to))
+                                .sorted(Comparator.comparing(Show::startsAt))
+                                .map(s -> stat(s))
+                                .toList(),
+                        page,
+                        size);
+            }
+
+            public Optional<AdminRepositories.ShowStat> showStat(long showId) {
+                return Optional.ofNullable(d.shows.get(showId)).map(s -> stat(s));
+            }
+
+            private AdminRepositories.ShowStat stat(Show s) {
+                Screen screen = d.screens.get(s.screenId());
+                long paid = 0;
+                long refunded = 0;
+                int booked = 0;
+                for (Booking b : d.bookings.values()) {
+                    if (b.showId() != s.id()) {
+                        continue;
+                    }
+                    if (b.status() == BookingStatus.CONFIRMED) {
+                        booked += b.seats().size();
+                    }
+                    for (Payment p : d.payments.values()) {
+                        if (p.bookingId().equals(b.id())
+                                && (p.status() == PaymentStatus.SUCCEEDED
+                                        || p.status() == PaymentStatus.REFUNDED)) {
+                            paid += p.amount();
+                            refunded += p.refundedAmount();
+                        }
+                    }
+                }
+                return new AdminRepositories.ShowStat(
+                        s.id(),
+                        d.movies.get(s.movieId()).title(),
+                        d.cinemas.get(screen.cinemaId()).name(),
+                        s.startsAt(),
+                        screen.capacity(),
+                        booked,
+                        paid,
+                        refunded);
+            }
+
+            public List<AdminRepositories.CategoryStat> categoryStats(long showId) {
+                Show s = d.shows.get(showId);
+                Screen screen = d.screens.get(s.screenId());
+                List<AdminRepositories.CategoryStat> out = new ArrayList<>();
+                for (SeatLayout.Category c : screen.layout().categories()) {
+                    int cap =
+                            screen.layout().bookableSeats().stream()
+                                    .mapToInt(
+                                            id ->
+                                                    screen.layout().categoryOf(id).equals(c.code())
+                                                            ? 1
+                                                            : 0)
+                                    .sum();
+                    int booked = 0;
+                    long revenue = 0;
+                    for (Booking b : d.bookings.values()) {
+                        if (b.showId() == showId && b.status() == BookingStatus.CONFIRMED) {
+                            for (var bs : b.seats()) {
+                                if (bs.category().equals(c.code())) {
+                                    booked++;
+                                    revenue += bs.price();
+                                }
+                            }
+                        }
+                    }
+                    out.add(new AdminRepositories.CategoryStat(c.code(), cap, booked, revenue));
+                }
+                return out;
+            }
+
+            public long countConfirmedSince(Instant since) {
+                return d.bookings.values().stream()
+                        .filter(
+                                b ->
+                                        b.status() == BookingStatus.CONFIRMED
+                                                && !b.updatedAt().isBefore(since))
+                        .count();
+            }
+        };
     }
 }

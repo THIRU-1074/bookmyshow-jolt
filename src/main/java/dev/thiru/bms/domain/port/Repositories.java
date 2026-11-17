@@ -24,4 +24,13 @@ public interface Repositories {
     BookingRepositories.Payments payments();
 
     BookingRepositories.PaymentEvents paymentEvents();
+
+    /** Admin writes; adapters that back the admin use cases override this. */
+    default AdminRepositories.CatalogWrites catalogWrites() {
+        throw new UnsupportedOperationException("catalogWrites");
+    }
+
+    default AdminRepositories.Reports reports() {
+        throw new UnsupportedOperationException("reports");
+    }
 }
