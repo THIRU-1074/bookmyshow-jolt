@@ -283,24 +283,24 @@ Owner POSTs need an `Idempotency-Key`. Movies and cities come from the public GE
 
 ## 8. Web UI
 
-Vanilla JS ES modules, no build step, no framework, served from `static/` by `Static.serve("/", dir).spaFallback("index.html")`. Hash-free History API routes:
+React 18 single-page app in `web/` (Vite, strict TypeScript, React Router), built with `npm run build` to `web/dist` and served same-origin by the Java server with `Static.serve("/", STATIC_DIR).spaFallback("index.html")`; there is no Node process at runtime. The Docker image builds the UI in a `node:20-alpine` stage and copies `dist` to `/app/static`. Fingerprinted files under `/assets/` are sent with `Cache-Control: public, max-age=31536000, immutable`; every other static response, `index.html` included, with `no-cache`. `mvn -B verify` does not need Node: tests serve a small fixture from `src/test/resources/static-fixture`. Fonts are self-hosted and bundled; no CDN. In development `npm run dev` proxies `/api` and `/mock-gateway` to `http://localhost:8080`. The server-rendered views link `/css/app.css`, shipped from `web/public`. The UI brand is the fictional Houselights. Hash-free History API routes:
 
 | Route | Page |
 |---|---|
-| `/` | city picker on first visit (remembered in `localStorage`), then the movie grid |
+| `/` | city picker on first visit (remembered in `localStorage`), then a featured-film carousel and the now-showing grid |
 | `/movies` | grid with search box and filter chips (genre, language, certificate, format), date strip for the next 7 days, pagination |
 | `/movies/{id}` | details, then show times grouped by cinema for the chosen city and date, availability badges |
-| `/shows/{id}` | seat map with category legend and prices, live updates over SSE, selection up to 10, sticky summary, "Hold seats" |
+| `/shows/{id}` | seat map with category legend and prices, live updates over SSE, selection up to 10, zoom for large layouts, sticky summary with seats, categories and total; "Hold seats" then shows the hold countdown with "Continue to payment" (creates the booking) and "Release" |
 | `/checkout/{bookingId}` | hold countdown (mm:ss from `expiresAt`, warning under 60 s, expiry message and back link), "Pay" opens the mock gateway |
 | `/bookings` | my bookings with status filter and cancel (shows the refund preview from the rule) |
-| `/bookings/{id}` | booking status; once CONFIRMED, the ticket |
+| `/bookings/{id}` | booking status; once CONFIRMED, a printable ticket rendered from the booking JSON, with the booking code and a decorative code pattern generated in the browser |
 | `/login`, `/register` | forms with inline validation from 422 `errors` |
 | `/owner` | theatre owner dashboard: tabs for my cinemas with their screens and layouts (create and edit, layout JSON editor with a preview), shows (schedule, list, cancel) and reports, all limited to my cinemas |
 | `/admin` | tabs for movies, cinemas and screens (layout JSON editor with a preview), shows, reports and users (search, grant or revoke `THEATRE_OWNER`, assign or unassign cinemas) |
 
 Navigation follows the roles in `/api/me`: everyone signed in sees My bookings; `THEATRE_OWNER` also sees My cinemas (`/owner`); `ADMIN` also sees Admin. An audience member sees neither dashboard, and the route guard sends them home. The UI only hides controls; the server is the authority.
 
-Requirements: semantic HTML; every control keyboard reachable; seats are `button` elements with `aria-label="Row C seat 7, Prime, 250 rupees, available"` and `aria-pressed`; arrow keys move within the map; status is not shown by colour alone (pattern or icon too); countdown in an `aria-live="polite"` region; focus moves to the page heading on route change; WCAG 2.2 AA contrast; light and dark themes from `prefers-color-scheme` plus a toggle; responsive down to 360 px; no inline scripts or styles (CSP). Access token in memory only; the app calls `/api/auth/refresh` on load and on 401.
+Requirements: semantic HTML; every control keyboard reachable; seats are `button` elements with `aria-label="Row C seat 7, Prime, 250 rupees, available"` and `aria-pressed`; arrow keys move within the map; status is not shown by colour alone (pattern or icon too); countdown in an `aria-live="polite"` region; focus moves to the page heading on route change; WCAG 2.2 AA contrast; light and dark themes from `prefers-color-scheme` plus a toggle; responsive down to 360 px; no inline scripts or styles (CSP). Access token in memory only; the app calls `/api/auth/refresh` on load when the browser has signed in before (a non-secret `bms.signedIn` flag in `localStorage`, because the HttpOnly cookie is invisible to scripts and an anonymous refresh would log a 401) and on any 401. Every POST outside `/api/auth` carries an `Idempotency-Key`; problem details are shown with their `requestId`. Films without an https `posterUrl` get poster art generated from the title (the seeded site-relative poster paths have no files behind them).
 
 ## 9. Non-functional
 
@@ -333,7 +333,7 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 | `MOCK_GATEWAY` | `true` | |
 | `METRICS_TOKEN` | unset | enables `/_jolt/metrics` |
 | `TRUST_PROXY` | unset | comma-separated CIDRs for `JoltConfig.trustProxy` |
-| `STATIC_DIR`, `VIEWS_DIR` | `src/main/resources/static`, `src/main/resources/views` | interim, see jolt#68 |
+| `STATIC_DIR`, `VIEWS_DIR` | `web/dist`, `src/main/resources/views` | interim, see jolt#68; `web/dist` exists after `npm run build` in `web/` |
 
 ## 10. Layering
 
