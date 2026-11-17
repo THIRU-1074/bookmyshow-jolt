@@ -109,6 +109,17 @@ class BookingApiTest {
                 .expect(422)
                 .jsonEquals("errors.showId", "is required")
                 .jsonHas("errors.seats");
+        Map<String, Object> nullSeat = new java.util.HashMap<>();
+        nullSeat.put("showId", dev.thiru.bms.application.fakes.FakeWorld.SHOW_ID);
+        nullSeat.put("seats", java.util.Arrays.asList("A2", null));
+        kit.http
+                .post("/api/holds")
+                .header("Authorization", auth())
+                .header("Idempotency-Key", kit.key())
+                .json(nullSeat)
+                .expect(422)
+                .jsonEquals("code", "VALIDATION")
+                .jsonEquals("errors.seats[1]", "is required");
         kit.hold(ada, "A2", "A3");
         String eve = kit.user("eve@example.com");
         kit.http
