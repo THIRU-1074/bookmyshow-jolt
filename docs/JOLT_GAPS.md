@@ -18,7 +18,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | Nested and collection validation | [#61](https://github.com/THIRU-1074/custom-Http-Server/issues/61) | request shape in `web.BookingModule.HOLD` and `web.AdminModule.SHOW` is a Jolt `Validator` (`Rules.each`, `Rules.nested`, all errors in one 422). Kept: `domain.SeatLayout` and `domain.SeatHold` build their own `rows[3].seats` keys because the domain may not import Jolt (SPEC 10); `web.PaymentModule` has only flat fields | done (v0.4.1) |
 | Pub/sub hub for SSE | [#62](https://github.com/THIRU-1074/custom-Http-Server/issues/62) | `adapters.live.LiveSeatHub` publishes to a Jolt `Hub` (one topic per show; cap, bounded queues and slow-subscriber drop are Jolt's) and keeps a small hand-off queue so the pull-based `LiveSeats` port and the snapshot-first route stay as they are; it also tracks streams to end them at shutdown (new gap C) | done (v0.4.1) |
 | Static files and views from the classpath | [#68](https://github.com/THIRU-1074/custom-Http-Server/issues/68) | `Main` (`Static.serve("/", STATIC_DIR).spaFallback("index.html")`, `VIEWS_DIR`), `Dockerfile` | in progress |
-| `JoltTest` support for SSE and streams | [#69](https://github.com/THIRU-1074/custom-Http-Server/issues/69) | `web.LiveSseTest` over a loopback socket | open |
+| `JoltTest` support for SSE and streams | [#69](https://github.com/THIRU-1074/custom-Http-Server/issues/69) | none: `web.LiveSseTest` runs through `JoltTest` (`maxEvents`, `timeout`, `events()`); `EndToEndTest` still streams over a real socket on purpose | done (v0.4.1) |
 | SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | seat events carry the hub's `id:` through `EventStream.event(id, name, data)`. Kept on purpose: a `snapshot` on every connect, including one with `Last-Event-ID`, because SPEC 7 and the UI rely on it and it already restores the full state; replaying older events after it adds nothing | done (v0.4.1) |
 | App-defined metrics and health checks | [#71](https://github.com/THIRU-1074/custom-Http-Server/issues/71) | `GET /api/health` DB check in `web.WebModules`, `GET /api/admin/stats` in `web.AdminModule` | open |
 | Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | [#76](https://github.com/THIRU-1074/custom-Http-Server/issues/76) | none: `JwtAuth.middleware`, `Auth.requireRole`, `RateLimit` and `Csrf.protect` are installed as they are | done (v0.4.1) |
@@ -36,7 +36,6 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
 | #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
 | #68 | `src/main/java/dev/thiru/bms/Main.java`, `Dockerfile` |
-| #69 | `src/test/java/dev/thiru/bms/web/LiveSseTest.java` |
 | #71 | `src/main/java/dev/thiru/bms/web/WebModules.java` (`/api/health` DB check) |
 
 ## New gaps found in v0.4.1 (not filed yet)
