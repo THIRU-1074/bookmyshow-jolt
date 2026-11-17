@@ -13,8 +13,7 @@ import java.util.Map;
  * body. Running it against a scratch response lets a refusal be re-thrown as an exception, so it
  * leaves through {@link Problems} with a stable code and the request id.
  *
- * <p>TODO(jolt): no issue filed yet (see docs/JOLT_GAPS.md); delete when stock refusals honour
- * {@code problemJson} or raise exceptions.
+ * <p>TODO(jolt#76): delete when stock refusals honour {@code problemJson} or raise exceptions.
  */
 final class Guards {
 

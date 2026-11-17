@@ -21,8 +21,8 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | `JoltTest` support for SSE and streams | [#69](https://github.com/THIRU-1074/custom-Http-Server/issues/69) | `web.LiveSseTest` over a loopback socket | open |
 | SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | `web.LiveModule` (`snapshot` event on every connect) | open |
 | App-defined metrics and health checks | [#71](https://github.com/THIRU-1074/custom-Http-Server/issues/71) | `GET /api/health` DB check in `web.WebModules`, `GET /api/admin/stats` in `web.AdminModule` | open |
-| Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | none yet (to be filed) | `web.Guards` re-raises the refusal as an exception so it leaves as problem+json | open |
-| `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | none yet (to be filed) | `web.Problems.middleware` catches handler failures and writes the problem itself | open |
+| Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | [#76](https://github.com/THIRU-1074/custom-Http-Server/issues/76) | `web.Guards` re-raises the refusal as an exception so it leaves as problem+json | open |
+| `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | [#77](https://github.com/THIRU-1074/custom-Http-Server/issues/77) | `web.Problems.middleware` catches handler failures and writes the problem itself | open |
 
 Not needed for v1: [#63](https://github.com/THIRU-1074/custom-Http-Server/issues/63) TTL cache (ETag covers the catalog).
 
@@ -32,16 +32,20 @@ Found with `grep -rn "TODO(jolt#" src`. Gaps with no marker yet have no workarou
 
 | Jolt issue | File holding the workaround |
 |---|---|
-| #52 | none yet (catalog query parsing in `web`, not merged) |
+| #52 | `src/main/java/dev/thiru/bms/web/Query.java` |
 | #53 | none yet (`Main` sweeper start and shutdown hook) |
-| #54 | none yet (`web.IdempotencyFilter`, not merged) |
+| #54 | `src/main/java/dev/thiru/bms/web/IdempotencyFilter.java` |
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
 | #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
-| #57 | none yet (`web.PageRequest`, `web.PageResult`) |
+| #57 | `src/main/java/dev/thiru/bms/web/PageRequest.java`, `PageResult.java` |
 | #58 | none yet (sweeper in `Main`) |
 | #59 | `src/main/java/dev/thiru/bms/adapters/payment/HmacVerifier.java`, `MockGatewayClient.java` (signing) |
 | #60 | none yet (`AppConfig.fromEnv()`) |
-| #61 | none yet (validators in `web`) |
+| #61 | `src/main/java/dev/thiru/bms/web/BookingModule.java`, `AdminModule.java` (required-field checks) |
 | #62 | `src/main/java/dev/thiru/bms/adapters/live/SeatEvents.java` |
 | #68 | `src/main/java/dev/thiru/bms/Main.java`, `Dockerfile` |
-| #69 to #71 | none yet (tests and `web` endpoints) |
+| #69 | `src/test/java/dev/thiru/bms/web/LiveSseTest.java` |
+| #70 | `src/main/java/dev/thiru/bms/web/LiveModule.java` |
+| #71 | `src/main/java/dev/thiru/bms/web/WebModules.java` (`/api/health` DB check) |
+| #76 | `src/main/java/dev/thiru/bms/web/Guards.java` |
+| #77 | `src/main/java/dev/thiru/bms/web/Problems.java` |

@@ -20,8 +20,7 @@ import java.util.Map;
  * One middleware catches what handlers throw so the body can carry the request id, which Jolt's own
  * error mappers cannot see.
  *
- * <p>TODO(jolt): no issue filed yet (see docs/JOLT_GAPS.md); fold into {@code app.onError} once a
- * mapper can read the request.
+ * <p>TODO(jolt#77): fold into {@code app.onError} once a mapper can read the request.
  */
 final class Problems {
 
