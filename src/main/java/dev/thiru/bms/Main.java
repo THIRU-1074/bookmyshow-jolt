@@ -279,7 +279,7 @@ public final class Main {
     }
 
     public static void main(String[] args) {
-        AppConfig config = AppConfig.fromEnv(System.getenv());
+        AppConfig config = AppConfig.load();
         LOG.log(Level.INFO, "Starting with " + config);
         Booted booted = app(config, JoltConfig.fromEnv());
         Server server = booted.listen(config.port());

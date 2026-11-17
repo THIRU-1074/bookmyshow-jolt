@@ -14,7 +14,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | Pagination helper | [#57](https://github.com/THIRU-1074/custom-Http-Server/issues/57) | `web.Paging`: Jolt `Page` and `Page.Result` build the envelope; the app still checks `page` and `size` itself because `Page.of` answers 400 without naming the field and silently caps `size`, where SPEC 7 wants 422 `errors.page`/`errors.size` | done (v0.4.1), parameter check kept |
 | Scheduled background tasks | [#58](https://github.com/THIRU-1074/custom-Http-Server/issues/58) | none: `app.every("expiry-sweep", SWEEP_INTERVAL, ...)` in `Main` | done (v0.4.1) |
 | Webhook signature verification | [#59](https://github.com/THIRU-1074/custom-Http-Server/issues/59) | verification is `Webhooks.hmacSha256(WEBHOOK_SECRET, "Bms-Signature").prefix("v1=").timestampHeader("Bms-Timestamp")` on the webhook route; `adapters.payment.WebhookSigner` stays because Jolt has no signer and the mock gateway must sign | done (v0.4.1) |
-| Configuration loader | [#60](https://github.com/THIRU-1074/custom-Http-Server/issues/60) | `AppConfig.fromEnv()` | open |
+| Configuration loader | [#60](https://github.com/THIRU-1074/custom-Http-Server/issues/60) | none: `AppConfig.from(Config)` reads every SPEC variable through Jolt's `Config.load()` and keeps only the app's own checks (secret length, admin pair, SQLite URL, base URL) | done (v0.4.1) |
 | Nested and collection validation | [#61](https://github.com/THIRU-1074/custom-Http-Server/issues/61) | nested paths built by `domain.SeatLayout` and `domain.SeatHold`; required-field checks in `web.BookingModule`, `web.AdminModule`, `web.PaymentModule` | open |
 | Pub/sub hub for SSE | [#62](https://github.com/THIRU-1074/custom-Http-Server/issues/62) | `adapters.live.SeatEvents` | open |
 | Static files and views from the classpath | [#68](https://github.com/THIRU-1074/custom-Http-Server/issues/68) | `Main` (`Static.serve("/", STATIC_DIR).spaFallback("index.html")`, `VIEWS_DIR`), `Dockerfile` | in progress |
@@ -35,7 +35,6 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | #54 | `src/main/java/dev/thiru/bms/web/IdempotencyFilter.java`, `adapters/db/SqlIdempotency.java`, `src/main/resources/db/migrations/V3__idempotency.sql` |
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
 | #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
-| #60 | `src/main/java/dev/thiru/bms/AppConfig.java` |
 | #61 | `src/main/java/dev/thiru/bms/web/BookingModule.java`, `AdminModule.java` (required-field checks) |
 | #62 | `src/main/java/dev/thiru/bms/adapters/live/SeatEvents.java` |
 | #68 | `src/main/java/dev/thiru/bms/Main.java`, `Dockerfile` |

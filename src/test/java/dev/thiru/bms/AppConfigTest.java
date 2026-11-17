@@ -6,13 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import in.jolt.Config;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class AppConfigTest {
 
@@ -140,8 +143,15 @@ class AppConfigTest {
         assertEquals(Path.of("/app/static"), c.staticDir());
         assertEquals(Path.of("/app/views"), c.viewsDir());
         assertTrue(c.joltDev());
-        assertThrows(
-                IllegalArgumentException.class, () -> AppConfig.fromEnv(env("HOLD_TTL", "7m")));
+        // Jolt's Config also reads the short forms; anything else still fails naming the key.
+        assertEquals(
+                Duration.ofMinutes(7), AppConfig.fromEnv(env("HOLD_TTL", "7m")).policy().holdTtl());
+        var badTtl =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> AppConfig.fromEnv(env("HOLD_TTL", "seven")));
+        assertTrue(badTtl.getMessage().contains("HOLD_TTL"), badTtl.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> AppConfig.fromEnv(env("PORT", "abc")));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> AppConfig.fromEnv(env("SWEEP_INTERVAL", "PT0S")));
@@ -151,6 +161,18 @@ class AppConfigTest {
                 IllegalArgumentException.class,
                 () -> AppConfig.fromEnv(env("MOCK_GATEWAY", "yes")));
         assertThrows(IllegalArgumentException.class, () -> AppConfig.fromEnv(env("PORT", "70000")));
+    }
+
+    @Test
+    void propertiesFilesSupplyValuesAndTheEnvironmentWins(@TempDir Path dir) throws Exception {
+        Files.writeString(
+                dir.resolve("application.properties"),
+                String.join("\n", "MAX_SEATS=6", "SSE_MAX_STREAMS=50", "JWT_SECRET=" + JWT));
+        AppConfig c =
+                AppConfig.from(Config.load(env("SSE_MAX_STREAMS", "9", "JWT_SECRET", null), dir));
+        assertEquals(6, c.policy().maxSeats());
+        assertEquals(9, c.sseMaxStreams());
+        assertEquals(JWT, c.jwtSecret());
     }
 
     @Test
