@@ -25,15 +25,16 @@ class RbacMatrixTest {
         return method + " " + pattern;
     }
 
-    /** The role columns of the doc, derived from the access level. */
+    /** The role columns of the doc (Anonymous, AUDIENCE, THEATRE_OWNER, ADMIN). */
     static List<String> cells(Permissions.Access access) {
         return switch (access) {
-            case PUBLIC -> List.of("yes", "yes", "yes");
-            case SELF_AUTHENTICATED -> List.of("proof", "proof", "proof");
-            case USER -> List.of("no", "yes", "yes");
-            case OWNER -> List.of("no", "own", "own");
-            case OWNER_OR_ADMIN -> List.of("no", "own", "any");
-            case ADMIN -> List.of("no", "no", "yes");
+            case PUBLIC -> List.of("yes", "yes", "yes", "yes");
+            case SELF_AUTHENTICATED -> List.of("proof", "proof", "proof", "proof");
+            case SIGNED_IN -> List.of("no", "yes", "yes", "yes");
+            case OWNER -> List.of("no", "own", "own", "own");
+            case OWNER_OR_ADMIN -> List.of("no", "own", "own", "any");
+            case THEATRE_OWNER -> List.of("no", "no", "own", "any");
+            case ADMIN -> List.of("no", "no", "no", "yes");
         };
     }
 
@@ -85,7 +86,7 @@ class RbacMatrixTest {
     @Test
     void everyRuleMatchesItsOwnPattern() {
         for (Permissions.Rule r : Permissions.TABLE) {
-            String path = r.pattern().replace(":id", "42");
+            String path = r.pattern().replaceAll(":\\w+", "42");
             assertEquals(r, Permissions.match(r.method(), path).orElseThrow(), path);
             assertEquals(r, Permissions.forPattern(r.method(), r.pattern()).orElseThrow());
         }

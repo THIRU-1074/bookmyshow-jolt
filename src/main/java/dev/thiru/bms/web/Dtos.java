@@ -1,8 +1,10 @@
 package dev.thiru.bms.web;
 
+import dev.thiru.bms.application.AdminCatalog;
 import dev.thiru.bms.application.AdminReports;
 import dev.thiru.bms.application.BookingQueries;
 import dev.thiru.bms.application.CatalogQueries;
+import dev.thiru.bms.application.UserAdmin;
 import dev.thiru.bms.domain.Booking;
 import dev.thiru.bms.domain.Cinema;
 import dev.thiru.bms.domain.City;
@@ -342,6 +344,7 @@ final class Dtos {
             String movieTitle,
             String cinemaName,
             Instant startsAt,
+            String status,
             int capacity,
             int booked,
             double occupancyPercent,
@@ -353,6 +356,7 @@ final class Dtos {
                     r.movieTitle(),
                     r.cinemaName(),
                     r.startsAt(),
+                    r.status().name(),
                     r.capacity(),
                     r.booked(),
                     r.occupancyPercent(),
@@ -372,6 +376,7 @@ final class Dtos {
             String movieTitle,
             String cinemaName,
             Instant startsAt,
+            String status,
             int capacity,
             int booked,
             double occupancyPercent,
@@ -385,6 +390,7 @@ final class Dtos {
                     r.movieTitle(),
                     r.cinemaName(),
                     r.startsAt(),
+                    r.status().name(),
                     r.capacity(),
                     r.booked(),
                     r.occupancyPercent(),
@@ -395,6 +401,34 @@ final class Dtos {
     }
 
     record StatsDto(long activeHolds, long bookingsConfirmedToday, int sseStreams) {}
+
+    /** A user as the admin Users tab sees it: roles and the cinemas they own. */
+    record AccountDto(
+            long id, String email, String name, List<String> roles, List<Long> cinemaIds) {
+        static AccountDto of(UserAdmin.Account a) {
+            User u = a.user();
+            return new AccountDto(
+                    u.id(),
+                    u.email(),
+                    u.name(),
+                    u.roles().stream().map(Enum::name).sorted().toList(),
+                    a.cinemaIds());
+        }
+    }
+
+    /** One of the caller's cinemas with its screens, layouts included, for the owner dashboard. */
+    record OwnedCinemaDto(
+            long id, String cityId, String name, String address, List<ScreenDto> screens) {
+        static OwnedCinemaDto of(AdminCatalog.CinemaScreens c) {
+            Cinema cinema = c.cinema();
+            return new OwnedCinemaDto(
+                    cinema.id(),
+                    cinema.cityId(),
+                    cinema.name(),
+                    cinema.address(),
+                    c.screens().stream().map(ScreenDto::of).toList());
+        }
+    }
 
     // ---- layout (request and response share the shape) ----
 

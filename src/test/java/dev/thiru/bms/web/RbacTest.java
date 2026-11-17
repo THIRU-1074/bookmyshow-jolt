@@ -3,9 +3,11 @@ package dev.thiru.bms.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.thiru.bms.application.fakes.FakeWorld;
 import in.jolt.test.JoltTest;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /** Server-side role and ownership enforcement on every protected route. */
@@ -14,7 +16,7 @@ class RbacTest {
     private final WebKit kit = new WebKit();
 
     private static String concrete(String pattern) {
-        return pattern.replace(":id", "1");
+        return pattern.replaceAll(":\\w+", "1");
     }
 
     private JoltTest.Result call(Permissions.Rule rule, String token) {
@@ -43,27 +45,53 @@ class RbacTest {
         }
     }
 
-    @Test
-    void everyAdminRouteRefusesAUserWith403() {
-        String user = kit.user("ada@example.com");
+    private int refuses(String token, Set<Permissions.Access> levels) {
         int checked = 0;
         for (Permissions.Rule rule : Permissions.TABLE) {
-            if (rule.access() != Permissions.Access.ADMIN) {
+            if (!levels.contains(rule.access())) {
                 continue;
             }
-            JoltTest.Result res = call(rule, user);
+            JoltTest.Result res = call(rule, token);
             assertEquals(403, res.status(), rule.toString());
             assertEquals("FORBIDDEN", res.jsonField("code"), rule.toString());
             checked++;
         }
-        assertEquals(17, checked);
+        return checked;
     }
 
     @Test
-    void everyAdminRouteAdmitsAnAdmin() {
+    void anAudienceMemberGets403OnEveryOwnerAndAdminRoute() {
+        String audience = kit.user("ada@example.com");
+        assertEquals(
+                22 + 7,
+                refuses(
+                        audience,
+                        Set.of(Permissions.Access.ADMIN, Permissions.Access.THEATRE_OWNER)));
+    }
+
+    @Test
+    void aTheatreOwnerGets403OnEveryAdminRoute() {
+        String owner = kit.owner("owner@example.com", 2);
+        assertEquals(22, refuses(owner, Set.of(Permissions.Access.ADMIN)));
+    }
+
+    @Test
+    void aTheatreOwnerPassesTheRoleCheckOnEveryOwnerRoute() {
+        String owner = kit.owner("owner@example.com", 2);
+        for (Permissions.Rule rule : Permissions.TABLE) {
+            if (rule.access() == Permissions.Access.THEATRE_OWNER) {
+                int status = call(rule, owner).status();
+                assertTrue(
+                        status != 401 && status != 403 && status < 500, rule + " gave " + status);
+            }
+        }
+    }
+
+    @Test
+    void anAdminPassesEveryProtectedRoute() {
         String admin = kit.admin();
         for (Permissions.Rule rule : Permissions.TABLE) {
-            if (rule.access() == Permissions.Access.ADMIN) {
+            if (rule.access().needsToken()) {
                 int status = call(rule, admin).status();
                 assertTrue(
                         status != 401 && status != 403 && status < 500, rule + " gave " + status);
@@ -72,14 +100,114 @@ class RbacTest {
     }
 
     @Test
-    void adminRoutesAreAlsoGuardedByThePrefixRoleCheck() {
-        // Defence in depth: even a rule mistakenly marked USER under /api/admin is refused.
-        String user = kit.user("ada@example.com");
+    void adminAndOwnerRoutesAreAlsoGuardedByPrefixRoleChecks() {
+        // Defence in depth: even a rule mistakenly marked SIGNED_IN under either prefix is refused.
+        String audience = kit.user("ada@example.com");
+        String owner = kit.owner("owner@example.com", 2);
         assertTrue(
                 Permissions.TABLE.stream()
                         .filter(r -> r.pattern().startsWith("/api/admin/"))
                         .allMatch(r -> r.access() == Permissions.Access.ADMIN));
-        kit.http.get("/api/admin/stats").header("Authorization", WebKit.bearer(user)).expect(403);
+        assertTrue(
+                Permissions.TABLE.stream()
+                        .filter(r -> r.pattern().startsWith("/api/owner/"))
+                        .allMatch(r -> r.access() == Permissions.Access.THEATRE_OWNER));
+        kit.http
+                .get("/api/admin/stats")
+                .header("Authorization", WebKit.bearer(audience))
+                .expect(403);
+        kit.http.get("/api/admin/stats").header("Authorization", WebKit.bearer(owner)).expect(403);
+        kit.http
+                .get("/api/owner/cinemas")
+                .header("Authorization", WebKit.bearer(audience))
+                .expect(403);
+    }
+
+    @Test
+    void aTheatreOwnerGets404OnAnotherOwnersCinemaScreenShowAndReport() {
+        String admin = kit.admin();
+        Number otherCinema =
+                (Number)
+                        kit.http
+                                .post("/api/admin/cinemas")
+                                .header("Authorization", WebKit.bearer(admin))
+                                .header("Idempotency-Key", kit.key())
+                                .json(
+                                        Map.of(
+                                                "cityId", "bengaluru",
+                                                "name", "Other",
+                                                "address", "Road"))
+                                .expect(201)
+                                .jsonField("id");
+        String mine = kit.owner("mine@example.com", 2);
+        String theirs = kit.owner("theirs@example.com", otherCinema.longValue());
+        String bearer = WebKit.bearer(theirs);
+        long show = FakeWorld.SHOW_ID;
+
+        JoltTest.Result cinemas =
+                kit.http.get("/api/owner/cinemas").header("Authorization", bearer).expect(200);
+        assertEquals(otherCinema.longValue(), ((Number) cinemas.jsonField("0.id")).longValue());
+        assertEquals(1, cinemas.json(List.class).size());
+        kit.http
+                .post("/api/owner/cinemas/2/screens")
+                .header("Authorization", bearer)
+                .header("Idempotency-Key", kit.key())
+                .json(Map.of("name", "Sneaky", "layout", OwnerApiTest.layout(10)))
+                .expect(404)
+                .jsonEquals("code", "NOT_FOUND");
+        kit.http
+                .put("/api/owner/screens/" + FakeWorld.SCREEN_ID)
+                .header("Authorization", bearer)
+                .json(Map.of("name", "Sneaky", "layout", OwnerApiTest.layout(10)))
+                .expect(404);
+        kit.http
+                .post("/api/owner/shows")
+                .header("Authorization", bearer)
+                .header("Idempotency-Key", kit.key())
+                .json(OwnerApiTest.show(FakeWorld.SCREEN_ID, FakeWorld.T0.plusSeconds(86_400 * 6)))
+                .expect(404);
+        kit.http
+                .post("/api/owner/shows/" + show + "/cancel")
+                .header("Authorization", bearer)
+                .header("Idempotency-Key", kit.key())
+                .expect(404);
+        kit.http
+                .get("/api/owner/reports/shows/" + show)
+                .header("Authorization", bearer)
+                .expect(404)
+                .jsonEquals("code", "NOT_FOUND");
+        kit.http
+                .get("/api/owner/reports/shows")
+                .header("Authorization", bearer)
+                .expect(200)
+                .jsonEquals("total", 0);
+
+        // Nothing changed, and the real owner still sees it all.
+        kit.http
+                .get("/api/owner/reports/shows/" + show)
+                .header("Authorization", WebKit.bearer(mine))
+                .expect(200)
+                .jsonEquals("status", "SCHEDULED");
+        kit.http
+                .get("/api/owner/reports/shows")
+                .header("Authorization", WebKit.bearer(mine))
+                .expect(200)
+                .jsonEquals("total", 1);
+    }
+
+    @Test
+    void anAdminCannotRemoveTheirOwnAdminRole() {
+        String admin = kit.admin();
+        long adminId = kit.idOf("admin@bms.test");
+        kit.http
+                .delete("/api/admin/users/" + adminId + "/roles/ADMIN")
+                .header("Authorization", WebKit.bearer(admin))
+                .expect(409)
+                .jsonEquals("code", "CONFLICT");
+        kit.http
+                .get("/api/admin/stats")
+                .header("Authorization", WebKit.bearer(kit.login("admin@bms.test")))
+                .expect(200);
     }
 
     @Test

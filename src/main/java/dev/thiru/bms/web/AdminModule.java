@@ -3,11 +3,13 @@ package dev.thiru.bms.web;
 import dev.thiru.bms.application.AdminCatalog;
 import dev.thiru.bms.application.AdminReports;
 import dev.thiru.bms.application.CancelShow;
+import dev.thiru.bms.application.UserAdmin;
 import dev.thiru.bms.domain.Certificate;
 import dev.thiru.bms.domain.Cinema;
 import dev.thiru.bms.domain.City;
 import dev.thiru.bms.domain.DomainException;
 import dev.thiru.bms.domain.Movie;
+import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.SeatLayout;
 import dev.thiru.bms.domain.ShowFormat;
 import dev.thiru.bms.domain.port.LiveSeats;
@@ -26,8 +28,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Catalog management and reports under {@code /api/admin} (SPEC 7, admin). The RBAC gate admits
- * only the ADMIN role before any of these handlers runs; every POST also needs an Idempotency-Key.
+ * Catalog management, reports, users, roles and theatre owner links under {@code /api/admin} (SPEC
+ * 7, admin). The RBAC gate admits only the ADMIN role before any of these handlers runs; every POST
+ * also needs an Idempotency-Key.
  */
 final class AdminModule implements RouteModule {
 
@@ -64,6 +67,7 @@ final class AdminModule implements RouteModule {
     private final AdminCatalog admin;
     private final AdminReports reports;
     private final CancelShow cancelShow;
+    private final UserAdmin users;
     private final LiveSeats live;
     private final Middleware idempotent;
 
@@ -71,11 +75,13 @@ final class AdminModule implements RouteModule {
             AdminCatalog admin,
             AdminReports reports,
             CancelShow cancelShow,
+            UserAdmin users,
             LiveSeats live,
             Middleware idempotent) {
         this.admin = admin;
         this.reports = reports;
         this.cancelShow = cancelShow;
+        this.users = users;
         this.live = live;
         this.idempotent = idempotent;
     }
@@ -246,6 +252,54 @@ final class AdminModule implements RouteModule {
                                     s.bookingsConfirmedToday(),
                                     live.openStreams()));
                 });
+
+        r.get(
+                p + "/users",
+                (req, res) -> {
+                    PageRequest page = PageRequest.of(req);
+                    ok(
+                            res,
+                            PageResult.of(
+                                    users.list(Query.text(req, "q"), page.page(), page.size()),
+                                    Dtos.AccountDto::of));
+                });
+        r.put(
+                p + "/users/:id/roles/:role",
+                (req, res) ->
+                        ok(res, Dtos.AccountDto.of(users.grant(Query.id(req, "id"), role(req)))));
+        r.delete(
+                p + "/users/:id/roles/:role",
+                (req, res) ->
+                        ok(
+                                res,
+                                Dtos.AccountDto.of(
+                                        users.revoke(
+                                                Principal.of(req).userId(),
+                                                Query.id(req, "id"),
+                                                role(req)))));
+        r.put(
+                p + "/cinemas/:id/owners/:userId",
+                (req, res) ->
+                        ok(
+                                res,
+                                Dtos.AccountDto.of(
+                                        users.link(Query.id(req, "id"), Query.id(req, "userId")))));
+        r.delete(
+                p + "/cinemas/:id/owners/:userId",
+                (req, res) ->
+                        ok(
+                                res,
+                                Dtos.AccountDto.of(
+                                        users.unlink(
+                                                Query.id(req, "id"), Query.id(req, "userId")))));
+    }
+
+    private static Role role(Request req) {
+        try {
+            return Role.valueOf(req.param("role").toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw ApiException.validation("role", "must be one of AUDIENCE, THEATRE_OWNER, ADMIN");
+        }
     }
 
     private void reportList(Request req, Response res) {
@@ -284,7 +338,7 @@ final class AdminModule implements RouteModule {
         }
     }
 
-    private static <T> T body(Request req, Class<T> type) {
+    static <T> T body(Request req, Class<T> type) {
         T in = req.body(type);
         if (in == null) {
             throw ApiException.validation("body", "is required");
@@ -292,7 +346,7 @@ final class AdminModule implements RouteModule {
         return in;
     }
 
-    private static SeatLayout layout(ScreenRequest in) {
+    static SeatLayout layout(ScreenRequest in) {
         if (in.layout() == null) {
             throw ApiException.validation("layout", "is required");
         }
@@ -300,7 +354,7 @@ final class AdminModule implements RouteModule {
     }
 
     // TODO(jolt#61): declare required fields with nested validation rules.
-    private static ShowRequest show(ShowRequest in) {
+    static ShowRequest show(ShowRequest in) {
         if (in.movieId() == null) {
             throw ApiException.validation("movieId", "is required");
         }
@@ -341,11 +395,11 @@ final class AdminModule implements RouteModule {
                 in.description() == null ? "" : in.description());
     }
 
-    private static void created(Response res, Object body) {
+    static void created(Response res, Object body) {
         res.status(201).noStore().json(body);
     }
 
-    private static void ok(Response res, Object body) {
+    static void ok(Response res, Object body) {
         res.noStore().json(body);
     }
 }

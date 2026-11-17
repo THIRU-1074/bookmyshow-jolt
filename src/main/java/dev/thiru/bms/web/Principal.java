@@ -1,5 +1,6 @@
 package dev.thiru.bms.web;
 
+import dev.thiru.bms.application.CinemaScope;
 import dev.thiru.bms.domain.Role;
 import in.jolt.Request;
 import java.util.Collection;
@@ -14,8 +15,17 @@ record Principal(long userId, Set<Role> roles) {
         return roles.contains(Role.ADMIN);
     }
 
-    boolean isUser() {
-        return roles.contains(Role.AUDIENCE) || isAdmin();
+    /** Any known role; every account holds AUDIENCE, so this is every real account. */
+    boolean isSignedIn() {
+        return !roles.isEmpty();
+    }
+
+    /**
+     * The cinemas this caller may manage on the owner routes: all for an admin, else the linked
+     * ones. Only call after the gate has admitted THEATRE_OWNER or ADMIN.
+     */
+    CinemaScope cinemaScope() {
+        return isAdmin() ? CinemaScope.everything() : CinemaScope.ownedBy(userId);
     }
 
     static Principal of(Request req) {

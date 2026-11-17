@@ -95,6 +95,9 @@ final class WebKit {
 
     /** Creates an ADMIN directly in the store (registration never grants roles) and logs in. */
     String admin() {
+        if (world.inTransaction(r -> r.users().findByEmail("admin@bms.test")).isPresent()) {
+            return login("admin@bms.test");
+        }
         world.inTransaction(
                 r ->
                         r.users()
@@ -107,6 +110,22 @@ final class WebKit {
                                                 Set.of(Role.ADMIN, Role.AUDIENCE),
                                                 FakeWorld.T0)));
         return login("admin@bms.test");
+    }
+
+    long idOf(String email) {
+        return world.inTransaction(r -> r.users().findByEmail(email)).orElseThrow().id();
+    }
+
+    /**
+     * Registers an account, has the admin link it to {@code cinemaId} over the API (which grants
+     * THEATRE_OWNER), then signs in again so the token carries the new role.
+     */
+    String owner(String email, long cinemaId) {
+        user(email);
+        http.put("/api/admin/cinemas/" + cinemaId + "/owners/" + idOf(email))
+                .header("Authorization", bearer(admin()))
+                .expect(200);
+        return login(email);
     }
 
     String login(String email) {
