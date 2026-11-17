@@ -26,7 +26,7 @@ RUN groupadd --system --gid 10001 bms \
     && mkdir -p /app /data && chown bms:bms /app /data
 WORKDIR /app
 COPY --from=build /build/lib /app/lib
-# Static UI and views are served from the filesystem until jolt#68 ships.
+# The React build (STATIC_DIR) is produced by Node outside the jar; views are copied too, though the jar also carries them on the class path.
 COPY --from=web /web/dist /app/static
 COPY --from=build /build/src/main/resources/views /app/views
 ENV PORT=8080 \
