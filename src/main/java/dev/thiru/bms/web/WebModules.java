@@ -73,7 +73,7 @@ public final class WebModules {
                 SecurityHeaders.defaults()
                         .csp(CSP)
                         .hsts(Duration.ofDays(365), req -> "https".equalsIgnoreCase(req.scheme())));
-        app.use(Problems.middleware(mapper));
+        app.use(Problems.middleware());
         app.use(Compress.gzip());
 
         Duration minute = Duration.ofMinutes(1);

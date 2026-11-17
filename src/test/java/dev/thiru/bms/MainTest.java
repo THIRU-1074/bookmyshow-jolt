@@ -54,7 +54,7 @@ class MainTest {
     void unknownRouteIsProblemJson() {
         boot().get("/api/nope")
                 .expect(404)
-                .header("Content-Type", "application/problem+json")
+                .header("Content-Type", "application/problem+json; charset=utf-8")
                 .jsonEquals("status", 404);
     }
 
@@ -74,7 +74,7 @@ class MainTest {
         boot().get("/api/nope")
                 .header("Accept", "text/html")
                 .expect(404)
-                .header("Content-Type", "application/problem+json");
+                .header("Content-Type", "application/problem+json; charset=utf-8");
     }
 
     @Test

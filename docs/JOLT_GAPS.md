@@ -22,7 +22,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | `web.LiveModule` (`snapshot` event on every connect) | open |
 | App-defined metrics and health checks | [#71](https://github.com/THIRU-1074/custom-Http-Server/issues/71) | `GET /api/health` DB check in `web.WebModules`, `GET /api/admin/stats` in `web.AdminModule` | open |
 | Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | [#76](https://github.com/THIRU-1074/custom-Http-Server/issues/76) | none: `JwtAuth.middleware`, `Auth.requireRole`, `RateLimit` and `Csrf.protect` are installed as they are | done (v0.4.1) |
-| `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | [#77](https://github.com/THIRU-1074/custom-Http-Server/issues/77) | `web.Problems.middleware` catches handler failures and writes the problem itself | open |
+| `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | [#77](https://github.com/THIRU-1074/custom-Http-Server/issues/77) | bodies now come from `app.onError((e, req) -> ...)` and Jolt adds `requestId`; `web.Problems.middleware` only re-throws domain errors as `ApiException` (an `HttpException`) and unexpected ones as a bare 500, see new gap A below | done (v0.4.1) |
 
 Not needed for v1: [#63](https://github.com/THIRU-1074/custom-Http-Server/issues/63) TTL cache (ETag covers the catalog).
 
@@ -45,4 +45,9 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | #69 | `src/test/java/dev/thiru/bms/web/LiveSseTest.java` |
 | #70 | `src/main/java/dev/thiru/bms/web/LiveModule.java` |
 | #71 | `src/main/java/dev/thiru/bms/web/WebModules.java` (`/api/health` DB check) |
-| #77 | `src/main/java/dev/thiru/bms/web/Problems.java` |
+
+## New gaps found in v0.4.1 (not filed yet)
+
+| | Gap | Effect on the app | Workaround |
+|---|---|---|---|
+| A | Jolt logs every mapped exception that is not an `HttpException` at WARNING with its stack trace (`Mapped exception on GET /path`). Expected outcomes (a seat conflict, a 404) flood the log, and messages may carry user data. | SPEC 9 wants one log line per request. | `web.Problems.middleware` turns domain errors into `ApiException` (an `HttpException`) and logs unexpected ones by class and request id before re-throwing a bare 500. |

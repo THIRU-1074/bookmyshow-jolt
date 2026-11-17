@@ -2,6 +2,7 @@ package dev.thiru.bms.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -34,6 +35,41 @@ class OpsApiTest {
         assertEquals(500, p.status());
         assertEquals("INTERNAL", p.code());
         assertFalse(p.detail().contains("hunter2"));
+    }
+
+    @Test
+    void everyProblemCarriesTheRequestId() {
+        var notFound =
+                kit.http
+                        .get("/api/movies/999")
+                        .header("X-Request-Id", "r-404")
+                        .expect(404)
+                        .jsonEquals("code", "NOT_FOUND")
+                        .jsonEquals("requestId", "r-404");
+        assertTrue(notFound.header("Content-Type").startsWith("application/problem+json"));
+        kit.http
+                .get("/api/movies?size=0")
+                .header("X-Request-Id", "r-422")
+                .expect(422)
+                .jsonEquals("errors.size", "must be 1 to 100")
+                .jsonEquals("requestId", "r-422");
+    }
+
+    @Test
+    void anUnexpectedFailureIs500WithTheRequestIdAndNoDetails() {
+        kit.app.get(
+                "/boom",
+                (req, res) -> {
+                    throw new IllegalStateException("db password is hunter2");
+                });
+        var res =
+                kit.http
+                        .get("/boom")
+                        .header("X-Request-Id", "r-500")
+                        .expect(500)
+                        .jsonEquals("code", "INTERNAL")
+                        .jsonEquals("requestId", "r-500");
+        assertFalse(res.text().contains("hunter2"));
     }
 
     @Test
