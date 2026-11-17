@@ -8,7 +8,6 @@ import dev.thiru.bms.adapters.db.Sqlite;
 import dev.thiru.bms.adapters.db.SqliteUnitOfWork;
 import dev.thiru.bms.adapters.ids.SecureIds;
 import dev.thiru.bms.adapters.live.LiveSeatHub;
-import dev.thiru.bms.adapters.live.SeatEvents;
 import dev.thiru.bms.adapters.payment.MockGatewayClient;
 import dev.thiru.bms.adapters.payment.MockGatewaySender;
 import dev.thiru.bms.adapters.payment.MockPaymentGateway;
@@ -63,14 +62,14 @@ public final class Main {
     public static final class Booted implements AutoCloseable {
         private final App app;
         private final Db db;
-        private final SeatEvents seatEvents;
+        private final LiveSeatHub live;
         private volatile Server server;
         private boolean closed;
 
-        private Booted(App app, Db db, SeatEvents seatEvents) {
+        private Booted(App app, Db db, LiveSeatHub live) {
             this.app = app;
             this.db = db;
-            this.seatEvents = seatEvents;
+            this.live = live;
         }
 
         public App app() {
@@ -94,7 +93,7 @@ public final class Main {
             closed = true;
             // Open SSE streams would otherwise hold the drain for its full grace period; Jolt's
             // stop hooks only run after the drain.
-            seatEvents.closeAll();
+            live.closeAll();
             Server s = server;
             if (s != null) {
                 s.close();
@@ -136,8 +135,7 @@ public final class Main {
                 LOG.log(Level.INFO, created ? "Admin account created" : "Admin account kept");
             }
 
-            SeatEvents seatEvents = new SeatEvents(config.sseMaxStreams(), SSE_QUEUE);
-            LiveSeatHub live = new LiveSeatHub(seatEvents);
+            LiveSeatHub live = new LiveSeatHub(config.sseMaxStreams(), SSE_QUEUE);
             SqlRefreshTokens refreshTokens = new SqlRefreshTokens(db);
             SqlIdempotency idempotency = new SqlIdempotency(db);
 
@@ -179,7 +177,7 @@ public final class Main {
                 app.exposeRoutes();
             }
             serveStatic(app, staticDir);
-            return new Booted(app, db, seatEvents);
+            return new Booted(app, db, live);
         } catch (RuntimeException | Error e) {
             db.close();
             throw e;
