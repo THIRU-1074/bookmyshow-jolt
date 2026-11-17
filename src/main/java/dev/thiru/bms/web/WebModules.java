@@ -172,6 +172,7 @@ public final class WebModules {
                         idempotent));
         app.module(new OwnerModule(adminCatalog, reports, cancelShow, idempotent));
         // The same check feeds /_jolt/health; /api/health keeps its own JSON shape for Render.
+        // TODO(jolt#84): run the registered checks for /api/health once Jolt exposes them.
         app.health("db", () -> deps.dbUp().getAsBoolean());
         app.get(
                 "/api/health",

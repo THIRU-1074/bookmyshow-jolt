@@ -13,7 +13,10 @@ import java.util.Map;
  *
  * <p>Jolt 0.4.1 writes its own 400, 409, 422 and 503 refusals as plain text. They are re-thrown
  * here, so they leave as problem+json with {@code code: IDEMPOTENCY} and the request id, keeping
- * {@code Retry-After}. A replay echoes the current request id. See docs/JOLT_GAPS.md (gap E).
+ * {@code Retry-After}. A replay echoes the current request id.
+ *
+ * <p>TODO(jolt#85): install {@code Idempotency.keys()} directly once its refusals go through the
+ * error path and replays keep the current request id.
  */
 final class Idempotent {
 

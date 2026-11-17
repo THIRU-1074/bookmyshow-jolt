@@ -91,6 +91,7 @@ public final class Main {
                 return;
             }
             closed = true;
+            // TODO(jolt#82): move to a pre-drain hook once Jolt has one.
             // Open SSE streams would otherwise hold the drain for its full grace period; Jolt's
             // stop hooks only run after the drain.
             live.closeAll();

@@ -28,6 +28,9 @@ import java.util.concurrent.TimeUnit;
  * messages to the route through a small local queue so the {@link LiveSeats} port can stay pull
  * based. Each message carries the hub's event id, which increases in publish order. Replay is off:
  * every connect starts with a full snapshot (SPEC 7), so events from before it add nothing.
+ *
+ * <p>TODO(jolt#83): serve with {@code hub.sse} and drop the stream tracking once Hub can end a
+ * topic's subscribers and send a first event.
  */
 public final class LiveSeatHub implements LiveSeats, SeatEventPublisher {
 

@@ -40,6 +40,7 @@ final class CatalogCache {
      * Path plus every query value, names sorted and values in order, each length-prefixed so no two
      * different queries share a key. Jolt does not expose the raw query string.
      */
+    // TODO(jolt#87): key on req.rawQuery() once it is public.
     static String key(Request req) {
         StringBuilder key = new StringBuilder(req.path());
         for (String name : new TreeSet<>(req.query().keySet())) {

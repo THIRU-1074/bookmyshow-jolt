@@ -42,6 +42,9 @@ import java.util.regex.Pattern;
  * it would find no history and run V1 again over the existing tables. Render starts from an empty
  * disk on each deploy, but local databases and the Docker {@code /data} volume do not. See
  * docs/JOLT_GAPS.md.
+ *
+ * <p>TODO(jolt#86): switch to {@code Migrations.runClasspath} once it can baseline a database whose
+ * history this runner recorded.
  */
 public final class SchemaRunner {
 

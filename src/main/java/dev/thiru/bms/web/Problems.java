@@ -20,7 +20,9 @@ import java.util.Map;
  * exception that is not an {@link HttpException} at WARNING with its stack trace, which would log
  * each expected seat conflict and break SPEC 9's one line per request. So a domain error is
  * re-thrown as an {@link ApiException}, and anything unexpected is logged here by class and request
- * id (messages can carry user data) and re-thrown as a bare 500. See docs/JOLT_GAPS.md.
+ * id (messages can carry user data) and re-thrown as a bare 500.
+ *
+ * <p>TODO(jolt#81): drop the classification once Jolt stops logging mapped exceptions at WARNING.
  */
 final class Problems {
 

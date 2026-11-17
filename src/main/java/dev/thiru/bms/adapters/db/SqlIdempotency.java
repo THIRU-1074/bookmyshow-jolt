@@ -21,6 +21,7 @@ public final class SqlIdempotency implements IdempotencyStore {
      * Not replayed: a replay must echo its own request id, not the first request's. RequestId sets
      * it before the handler runs, so Jolt's snapshot of the response would otherwise keep it.
      */
+    // TODO(jolt#85): drop once Jolt's replay keeps the current request id.
     private static final String REQUEST_ID = "X-Request-Id";
 
     private record Row(String fingerprint, Integer status, String headers, byte[] body) {}
