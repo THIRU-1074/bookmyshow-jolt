@@ -4,7 +4,7 @@ The contract every lane builds against. A change to this file is a PR of its own
 
 ## 1. Scope
 
-Single-node movie ticketing: browse a city's movies and shows, hold seats, pay through a mock gateway, get a ticket, cancel with a time-based refund. Admins manage the catalog and read reports. Out of scope for v1: real payments, multi-node deployment, Postgres, offers and coupons, food and beverages, email or SMS.
+Single-node movie ticketing: browse a city's movies and shows, hold seats, pay through a mock gateway, get a ticket, cancel with a time-based refund. Theatre owners run the screens, shows and reports of the cinemas an admin links them to; admins manage the whole catalog, the owners and every report. Out of scope for v1: real payments, multi-node deployment, Postgres, offers and coupons, food and beverages, email or SMS.
 
 ## 2. Conventions
 
@@ -26,7 +26,8 @@ Single-node movie ticketing: browse a city's movies and shows, hold seats, pay t
 | SeatHold | id, showId, userId, seats[], createdAt, expiresAt, status | 1..`MAX_SEATS` distinct seats that exist and are not blocked (an empty list or more than `MAX_SEATS` is 422 `VALIDATION` on the `seats` field); expiresAt = createdAt + `HOLD_TTL`; all-or-nothing; status `ACTIVE, CONSUMED, RELEASED, EXPIRED` |
 | Booking | id, code, userId, showId, holdId, seats[], amount, currency, status, expiresAt, refundAmount, checkoutCount, version, createdAt, updatedAt | each booking seat carries (seat, category, price) captured at hold time; amount = sum of seat prices; checkoutCount counts checkouts and is capped at 3; code `BK` + 8 Crockford base32 chars, unique; version starts at 0 and increments on every write |
 | Payment | id, bookingId, amount, currency, status, gatewayRef, refundedAmount, createdAt, updatedAt | amount = booking amount; status `INITIATED, SUCCEEDED, FAILED, REFUNDED`; refundedAmount <= amount |
-| User | id, email, passwordHash, name, roles, createdAt | email unique, stored lowercase; passwordHash from `PasswordHasher`; password 10..128 chars; roles subset of `USER, ADMIN`, never empty |
+| User | id, email, passwordHash, name, roles, createdAt | email unique, stored lowercase; passwordHash from `PasswordHasher`; password 10..128 chars; roles subset of `AUDIENCE, THEATRE_OWNER, ADMIN`, never empty; every account holds `AUDIENCE` and it cannot be removed |
+| CinemaOwner | cinemaId, userId | the pair is unique; a user may own many cinemas and a cinema may have many owners; only a user holding `THEATRE_OWNER` has links |
 
 **Seat layout** (JSON, validated by the domain):
 
@@ -36,6 +37,16 @@ Single-node movie ticketing: browse a city's movies and shows, hold seats, pay t
 ```
 
 Rules: rows unique and contiguous from `A`; 1..26 rows; seats 1..50 per row; category codes `[A-Z_]{2,16}`, unique, each used by at least one row; `aisleAfter` and `blocked` values within 1..seats. `blocked` MUST NOT contain duplicates (rejected as 422); every layout MUST have at least one bookable seat. Capacity = sum of seats minus blocked.
+
+**Roles and cinema ownership.** There are exactly three roles. Every account holds `AUDIENCE`; `THEATRE_OWNER` and `ADMIN` are added on top of it.
+
+| Role | Granted by | May |
+|---|---|---|
+| `AUDIENCE` | every account; `POST /api/auth/register` always creates `AUDIENCE` only and ignores any `roles` in the body | browse, hold, book, pay, cancel and see tickets; only their own holds and bookings |
+| `THEATRE_OWNER` | an admin, by promoting an existing account and linking it to cinemas; there is no self-signup and no application flow | everything `AUDIENCE` may, plus screens, seat layouts, shows (create, cancel with refunds) and sales and occupancy reports, only for the cinemas linked to them |
+| `ADMIN` | the `ADMIN_EMAIL` account at startup, or another admin | everything: cities, movies, cinemas, every screen, show and report, owner links and roles |
+
+Ownership rules: a theatre owner's scope is the set of cinemas linked to them in `cinema_owner`, read from the database inside each use case's transaction, so an unlink takes effect at once. A screen, show or report of a cinema outside that scope is 404 `NOT_FOUND`, never 403, so other cinemas' ids cannot be probed. Linking a user to a cinema grants `THEATRE_OWNER`; revoking `THEATRE_OWNER` removes every link of that user; unlinking the last cinema keeps the role. Deleting a cinema deletes its links. An admin MUST NOT remove their own `ADMIN` role (409 `CONFLICT`). Owners MUST NOT create or change cities, movies or cinemas, link owners or change roles.
 
 ## 4. Booking lifecycle
 
@@ -58,7 +69,7 @@ Rules: rows unique and contiguous from `A`; 1..26 rows; seats 1..50 per row; cat
 | HELD | CANCELLED | `POST /api/bookings/{id}/cancel` | owner | locks deleted; no payment exists. Cancelling a booking whose expiresAt has passed but which the sweeper has not yet marked EXPIRED is 409 `BOOKING_STATE` |
 | PAYMENT_PENDING | (none) | cancel | owner | 409 `PAYMENT_IN_PROGRESS` |
 | CONFIRMED | REFUNDED or CANCELLED | cancel | owner | before show start only (below); locks deleted |
-| CONFIRMED, HELD, PAYMENT_PENDING | REFUNDED or CANCELLED | `POST /api/admin/shows/{id}/cancel` | admin | CONFIRMED gets a full refund; others become CANCELLED |
+| CONFIRMED, HELD, PAYMENT_PENDING | REFUNDED or CANCELLED | `POST /api/admin/shows/{id}/cancel` or `POST /api/owner/shows/{id}/cancel` | admin, or a theatre owner of the show's cinema | CONFIRMED gets a full refund; others become CANCELLED |
 
 **Refund rule** (t = startsAt - now at cancellation): t > 24 h: 100 %; 4 h <= t <= 24 h: 50 %, rounded down to the paisa; 0 < t < 4 h: 0 % (status CANCELLED, seats released for resale); t <= 0: 409 `SHOW_STARTED`. The mock gateway refunds synchronously. A partial refund leaves the payment REFUNDED with `refundedAmount` set to the refunded paise (less than `amount`); payment status is never left SUCCEEDED once any refund is made.
 
@@ -72,7 +83,7 @@ Terminal states: EXPIRED, CANCELLED, REFUNDED. Sales for a show close at startsA
 4. **Optimistic version.** Every booking write is `UPDATE booking SET ..., version = version + 1 WHERE id = ? AND version = ?` expecting 1 row (`tx.updateExpecting`). A miss re-reads the booking and re-applies the transition rules once, then gives 409 `VERSION_CONFLICT`.
 5. **Expiry.** A sweeper runs every `SWEEP_INTERVAL` (30 s) and expires holds and bookings with expiresAt <= now in batches of 500. Correctness never depends on the sweeper: every transition re-checks expiresAt inside its transaction.
 6. **Limits.** `HOLD_TTL` 7 min and `MAX_SEATS` 10 (both configurable). One ACTIVE hold per user per show.
-7. **Idempotency.** `Idempotency-Key` (1..128 printable ASCII) is REQUIRED on `POST /api/holds`, `POST /api/bookings`, `POST /api/bookings/{id}/checkout`, `POST /api/bookings/{id}/cancel` and every admin `POST`; missing gives 400. Scope is the authenticated user. A replay returns the stored response with `Idempotency-Replayed: true`; the same key with a different body gives 422; a request still running gives 409.
+7. **Idempotency.** `Idempotency-Key` (1..128 printable ASCII) is REQUIRED on `POST /api/holds`, `POST /api/bookings`, `POST /api/bookings/{id}/checkout`, `POST /api/bookings/{id}/cancel` and every admin and owner `POST`; missing gives 400. Scope is the authenticated user. A replay returns the stored response with `Idempotency-Replayed: true`; the same key with a different body gives 422; a request still running gives 409.
 8. **Webhook deduplication.** `payment_event.event_id` is unique; a duplicate delivery returns 200 `{"duplicate": true}` without side effects.
 9. **Money.** Amounts are computed server side from show prices; client-sent amounts are ignored.
 
@@ -134,11 +145,20 @@ CREATE TABLE payment_event (event_id TEXT PRIMARY KEY, payment_id TEXT NOT NULL,
   received_at INTEGER NOT NULL) STRICT;
 ```
 
+`V3__idempotency.sql` adds the `idempotency_key` table (section 12). `V4__roles.sql` rewrites the stored role `USER` to `AUDIENCE` in `app_user.roles` and adds the owner link:
+
+```sql
+CREATE TABLE cinema_owner (cinema_id INTEGER NOT NULL REFERENCES cinema(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+  PRIMARY KEY (cinema_id, user_id)) STRICT;
+CREATE INDEX cinema_owner_user ON cinema_owner (user_id);
+```
+
 `V2__seed.sql`: cities `bengaluru`, `chennai`, `mumbai` (all `Asia/Kolkata`); 6 cinemas (2 per city); 2-3 screens each with layouts of 80-250 seats in two or three categories (`CLASSIC`, `PRIME`, `RECLINER`) and at least one blocked seat and aisles; 12 fictional movies (for example "The Monsoon Cipher", "Kaveri Nights", "Last Train to Hampi") in `en, hi, ta, te, kn` with genres from `Action, Comedy, Drama, Thriller, Romance, Animation, Sci-Fi, Horror, Family`; shows 4-5 per screen per day at 10:00, 13:30, 17:00, 20:30 and 23:15 local, non-overlapping. Shows are generated relative to the migration date with a recursive CTE for 14 days; no users are seeded (admin comes from env).
 
 ## 7. REST API
 
-Base path `/api`. JSON in and out, UTF-8. Auth is `Authorization: Bearer <access JWT>`; claims `sub` (user id) and `roles`. Roles: `-` public, `U` any signed-in user, `A` ADMIN.
+Base path `/api`. JSON in and out, UTF-8. Auth is `Authorization: Bearer <access JWT>`; claims `sub` (user id) and `roles` (read from the stored user on every issue and refresh). Roles: `-` public, `U` any signed-in user, `O` THEATRE_OWNER scoped to their cinemas (an ADMIN passes with every cinema in scope), `A` ADMIN. The per-route matrix is `docs/RBAC.md`.
 
 **Errors** are `application/problem+json`: `{"type":"about:blank","title":"Conflict","status":409,"detail":"Seat C7 is no longer available","code":"SEAT_UNAVAILABLE","conflicts":["C7"]}`. Validation gives 422 with `errors: {"seats[2]": "unknown seat"}`. Stable `code` values: `VALIDATION`, `NOT_FOUND`, `SEAT_UNAVAILABLE`, `HOLD_EXPIRED`, `BOOKING_STATE`, `PAYMENT_IN_PROGRESS`, `SHOW_STARTED`, `LIMIT_EXCEEDED`, `VERSION_CONFLICT`, `IDEMPOTENCY`, `RATE_LIMITED`, `UNAUTHENTICATED`, `FORBIDDEN`.
 
@@ -154,7 +174,7 @@ Base path `/api`. JSON in and out, UTF-8. Auth is `Authorization: Bearer <access
 | POST /api/auth/login | - | `{email, password}` | 200 as register; 401 on any mismatch (same message) |
 | POST /api/auth/refresh | cookie | - | 200 `{accessToken, expiresIn}`, rotated cookie; 401 reused or expired |
 | POST /api/auth/logout | cookie | - | 204, cookie cleared, family revoked |
-| GET /api/me | U | - | 200 `{id, email, name, roles}` |
+| GET /api/me | U | - | 200 `{id, email, name, roles}`; roles drawn from `AUDIENCE, THEATRE_OWNER, ADMIN` |
 
 Access tokens live 15 min. The refresh token (30 days) is only in cookie `bms_refresh` (HttpOnly, Secure when HTTPS, SameSite=Strict, Path=/api/auth); `/api/auth` routes are behind `Csrf.protect()`.
 
@@ -220,11 +240,31 @@ Events are published after the transaction commits and never carry user data. Th
 | POST /movies, PUT /movies/{id}, DELETE /movies/{id} | DELETE 409 if it has shows |
 | POST /shows, PUT /shows/{id} | overlap check; PUT 409 once any seat is locked |
 | POST /shows/{id}/cancel | section 4; idempotent |
-| GET /reports/shows | `city, from, to, page, size`: page of `{showId, movieTitle, cinemaName, startsAt, capacity, booked, occupancyPercent, revenue, refunded}`; revenue = confirmed amounts minus refunds |
+| GET /reports/shows | `city, from, to, page, size`: page of `{showId, movieTitle, cinemaName, startsAt, status, capacity, booked, occupancyPercent, revenue, refunded}`; revenue = confirmed amounts minus refunds |
 | GET /reports/shows/{id} | the same row plus `byCategory:[{category, capacity, booked, revenue}]` |
 | GET /stats | `{activeHolds, bookingsConfirmedToday, sseStreams}` |
+| GET /users | `q, page, size`: page of `{id, email, name, roles, cinemaIds}` ordered by id; `q` matches email or name (case-insensitive substring) |
+| PUT /users/{id}/roles/{role} | grant `THEATRE_OWNER` or `ADMIN`; 200 the user as in GET /users; 404 unknown user; 422 unknown role; repeating is a no-op |
+| DELETE /users/{id}/roles/{role} | revoke; 200 the user; revoking `THEATRE_OWNER` removes every cinema link; revoking `AUDIENCE` is 422; an admin revoking their own `ADMIN` is 409 `CONFLICT` |
+| PUT /cinemas/{id}/owners/{userId} | link the user to the cinema and grant `THEATRE_OWNER`; 200 the user; 404 unknown cinema or user; repeating is a no-op |
+| DELETE /cinemas/{id}/owners/{userId} | unlink; 200 the user; the role stays; 404 unknown cinema or user |
 
-Admin list views reuse the public GET endpoints. Mutations need an `Idempotency-Key` on POST.
+Admin list views reuse the public GET endpoints. Mutations need an `Idempotency-Key` on POST. A role change reaches the JWT `roles` claim at the next token issue or refresh (at most 15 minutes); cinema links are read per request.
+
+### Theatre owner (role O, prefix `/api/owner`)
+
+Owner routes live under their own prefix instead of reusing the admin routes, so every `/api/admin` route stays admin-only behind one prefix-wide role check and every `/api/owner` route is scoped. The prefix has its own `Auth.requireRole("THEATRE_OWNER", "ADMIN")`. Each use case loads the caller's linked cinemas inside its transaction; anything outside them is 404 `NOT_FOUND`. An ADMIN calling these routes has every cinema in scope. There are no owner routes for cities, movies, cinemas, owner links or roles.
+
+| Method, path | Notes |
+|---|---|
+| GET /cinemas | my cinemas: `[{id, cityId, name, address, screens:[{id, cinemaId, name, capacity, layout}]}]`, ordered by name |
+| POST /cinemas/{id}/screens, PUT /screens/{id} | as the admin routes (layout validated; layout change 409 if future shows exist); 404 outside scope |
+| POST /shows | as the admin route, including the overlap check; 404 when the screen is outside scope |
+| POST /shows/{id}/cancel | section 4, through the same use case and refunds; idempotent; 404 outside scope |
+| GET /reports/shows | as the admin report, filtered to my cinemas |
+| GET /reports/shows/{id} | as the admin report detail; 404 outside scope |
+
+Owner POSTs need an `Idempotency-Key`. Movies and cities come from the public GET endpoints.
 
 ### Ops
 
@@ -255,13 +295,16 @@ Vanilla JS ES modules, no build step, no framework, served from `static/` by `St
 | `/bookings` | my bookings with status filter and cancel (shows the refund preview from the rule) |
 | `/bookings/{id}` | booking status; once CONFIRMED, the ticket |
 | `/login`, `/register` | forms with inline validation from 422 `errors` |
-| `/admin` | tabs for movies, cinemas and screens (layout JSON editor with a preview), shows and reports |
+| `/owner` | theatre owner dashboard: tabs for my cinemas with their screens and layouts (create and edit, layout JSON editor with a preview), shows (schedule, list, cancel) and reports, all limited to my cinemas |
+| `/admin` | tabs for movies, cinemas and screens (layout JSON editor with a preview), shows, reports and users (search, grant or revoke `THEATRE_OWNER`, assign or unassign cinemas) |
+
+Navigation follows the roles in `/api/me`: everyone signed in sees My bookings; `THEATRE_OWNER` also sees My cinemas (`/owner`); `ADMIN` also sees Admin. An audience member sees neither dashboard, and the route guard sends them home. The UI only hides controls; the server is the authority.
 
 Requirements: semantic HTML; every control keyboard reachable; seats are `button` elements with `aria-label="Row C seat 7, Prime, 250 rupees, available"` and `aria-pressed`; arrow keys move within the map; status is not shown by colour alone (pattern or icon too); countdown in an `aria-live="polite"` region; focus moves to the page heading on route change; WCAG 2.2 AA contrast; light and dark themes from `prefers-color-scheme` plus a toggle; responsive down to 360 px; no inline scripts or styles (CSP). Access token in memory only; the app calls `/api/auth/refresh` on load and on 401.
 
 ## 9. Non-functional
 
-- **Middleware order:** `RequestId.middleware()`, `Logger.requests()`, `SecurityHeaders`, `Compress.gzip()`, IP rate limits, `jwt.middleware()` on protected prefixes, per-user rate limits, `Auth.requireRole("ADMIN")` on `/api/admin`, `Idempotency.keys().required()` on the POST routes in section 5.
+- **Middleware order:** `RequestId.middleware()`, `Logger.requests()`, `SecurityHeaders`, `Compress.gzip()`, IP rate limits, `jwt.middleware()` on protected prefixes, per-user rate limits, `Auth.requireRole("ADMIN")` on `/api/admin`, `Auth.requireRole("THEATRE_OWNER", "ADMIN")` on `/api/owner`, `Idempotency.keys().required()` on the POST routes in section 5.
 - **Security headers:** `SecurityHeaders.defaults().csp("default-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; form-action 'self'")`; HSTS only when the request is HTTPS.
 - **CORS:** off (no `Cors` middleware); the UI is same-origin.
 - **Request IDs:** `X-Request-Id` accepted or generated, echoed, and included in logs and in problem bodies as `requestId`.
@@ -343,6 +386,7 @@ Each interim workaround lives behind an adapter or a single class, carries `TODO
 - Domain: layout validation, overlap rule, refund boundaries (24 h, 4 h, start), state transitions table-driven.
 - Repositories: one contract test per port, run against SQLite in a temp file.
 - API: `JoltTest` for every endpoint, including each error `code`.
+- RBAC: anonymous gets 401 on every protected route; an audience member 403 on every owner and admin route; a theatre owner 403 on every admin route and 404 on another owner's cinema, screen, show and report; an admin passes every route and cannot remove their own `ADMIN`. `RbacMatrixTest` keeps the routes, `web.Permissions` and `docs/RBAC.md` in step.
 - Concurrency: 200 virtual-thread buyers on overlapping seats; booked seats never exceed capacity and no seat is booked twice; every hold ends CONSUMED, RELEASED or EXPIRED.
 - Webhook: valid, tampered body, wrong secret, stale timestamp, duplicate event id, success after expiry (refund).
-- End to end on a socket: register, search, hold, book, checkout, webhook, ticket, cancel, SSE events.
+- End to end on a socket: register, search, hold, book, checkout, webhook, ticket, cancel, SSE events; an admin promotes a user and links a cinema, the owner schedules a show there, an audience member books it, the owner sees the sale in their report and gets 404 on another cinema.
