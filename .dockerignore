@@ -1,0 +1,12 @@
+target/
+.git/
+.worktrees/
+data/
+*.db
+*.db-shm
+*.db-wal
+.idea/
+.vscode/
+*.iml
+Dockerfile
+.dockerignore
