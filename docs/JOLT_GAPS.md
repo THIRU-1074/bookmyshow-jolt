@@ -34,7 +34,7 @@ Found with `grep -rn "TODO(jolt#" src`. Gaps with no marker yet have no workarou
 |---|---|
 | #52 | `src/main/java/dev/thiru/bms/web/Query.java` |
 | #53 | none yet (`Main` sweeper start and shutdown hook) |
-| #54 | `src/main/java/dev/thiru/bms/web/IdempotencyFilter.java` |
+| #54 | `src/main/java/dev/thiru/bms/web/IdempotencyFilter.java`, `adapters/db/SqlIdempotency.java`, `src/main/resources/db/migrations/V3__idempotency.sql` |
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
 | #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
 | #57 | `src/main/java/dev/thiru/bms/web/PageRequest.java`, `PageResult.java` |
