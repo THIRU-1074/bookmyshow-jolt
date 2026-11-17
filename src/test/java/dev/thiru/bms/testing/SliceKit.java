@@ -71,6 +71,9 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
     private final BookingPolicy policy = BookingPolicy.defaults();
     private final PlainHasher hasher = new PlainHasher();
     private final MemoryRefreshTokens refreshTokens = new MemoryRefreshTokens();
+    private final SequentialIds ids = new SequentialIds();
+    private final RecordingGateway gateway = new RecordingGateway();
+    private final RecordingEvents events = new RecordingEvents();
     private final IdempotencyStore idempotency = IdempotencyStore.inMemory();
     private final FakeLive live;
     private final App app;
@@ -211,6 +214,21 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
 
     public FakeLive live() {
         return live;
+    }
+
+    /** Deterministic ids ({@code id-1}, ...) and a seeded random source for booking codes. */
+    public SequentialIds ids() {
+        return ids;
+    }
+
+    /** Records sessions and refunds; checkout URLs are {@code http://pay.test/<paymentId>}. */
+    public RecordingGateway gateway() {
+        return gateway;
+    }
+
+    /** Records the seat events a slice publishes after commit. */
+    public RecordingEvents events() {
+        return events;
     }
 
     public App app() {

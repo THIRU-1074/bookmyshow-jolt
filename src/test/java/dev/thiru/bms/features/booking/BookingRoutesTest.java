@@ -6,9 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.ports.Db;
-import dev.thiru.bms.testing.RecordingEvents;
-import dev.thiru.bms.testing.RecordingGateway;
-import dev.thiru.bms.testing.SequentialIds;
 import dev.thiru.bms.testing.SliceKit;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,10 +25,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  */
 class BookingRoutesTest {
 
-    final RecordingEvents events = new RecordingEvents();
-    final SequentialIds ids = new SequentialIds();
-    final RecordingGateway gateway = new RecordingGateway();
-
     @RegisterExtension
     final SliceKit kit =
             SliceKit.boot(
@@ -39,11 +32,11 @@ class BookingRoutesTest {
                             List.of(
                                     new BookingRoutes(
                                             k.db(),
-                                            events,
-                                            ids,
+                                            k.events(),
+                                            k.ids(),
                                             k.clock(),
                                             k.policy(),
-                                            gateway,
+                                            k.gateway(),
                                             k.pipeline().idempotent(),
                                             k.pipeline().holdLimit())));
 
@@ -171,7 +164,7 @@ class BookingRoutesTest {
                         + kit.clock().instant().plus(Duration.ofMinutes(7))
                         + "\"}",
                 res.text());
-        assertEquals(1, events.published.size(), "the Held event left after the commit");
+        assertEquals(1, kit.events().published.size(), "the Held event left after the commit");
     }
 
     @Test
@@ -224,7 +217,7 @@ class BookingRoutesTest {
                 .header("X-Request-Id", "second-try");
         assertTrue(replay.header("Content-Type").startsWith("application/json"));
         assertEquals(1, count("seat_hold"));
-        assertEquals(1, events.published.size(), "a replay publishes nothing");
+        assertEquals(1, kit.events().published.size(), "a replay publishes nothing");
 
         kit.http()
                 .post("/api/holds")
@@ -412,7 +405,7 @@ class BookingRoutesTest {
                 .jsonEquals("status", "REFUNDED")
                 .jsonEquals("refundAmount", 36000)
                 .jsonEquals("version", 3);
-        assertEquals(List.of("gw_" + payment + ":36000"), gateway.refunds);
+        assertEquals(List.of("gw_" + payment + ":36000"), kit.gateway().refunds);
     }
 
     @Test

@@ -110,4 +110,16 @@ class SliceKitTest {
                 0,
                 kit.db().inTransaction(tx -> tx.query("SELECT id FROM app_user", rs -> 1)).size());
     }
+
+    @Test
+    void portFakesAreFreshPerKit() {
+        assertEquals("id-1", kit.ids().newId());
+        assertEquals(
+                "http://pay.test/p1", kit.gateway().createSession("p1", 100, "INR").checkoutUrl());
+        assertTrue(kit.events().published.isEmpty());
+        try (SliceKit other = SliceKit.builder().boot()) {
+            assertEquals("id-1", other.ids().newId());
+            assertEquals(0, other.gateway().sessions.get());
+        }
+    }
 }
