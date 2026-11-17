@@ -67,9 +67,9 @@ final class SqlBookings {
                             Sqls.instant(rs, "created_at"),
                             Sqls.instant(rs, "updated_at"));
 
-    private static final String USER_COLS = "id, email, password_hash, name, roles, created_at";
+    static final String USER_COLS = "id, email, password_hash, name, roles, created_at";
 
-    private static final RowMapper<User> USER =
+    static final RowMapper<User> USER =
             rs ->
                     new User(
                             rs.getLong("id"),

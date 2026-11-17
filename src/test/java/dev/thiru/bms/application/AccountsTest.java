@@ -41,7 +41,7 @@ class AccountsTest {
     void registerAlwaysCreatesAPlainUser() {
         User u = accounts.register("Ada@Example.com", "correct horse", "Ada");
         assertEquals("ada@example.com", u.email());
-        assertEquals(Set.of(Role.USER), u.roles());
+        assertEquals(Set.of(Role.AUDIENCE), u.roles());
         assertTrue(u.id() > 0);
         assertEquals("h:correct horse", u.passwordHash());
     }
@@ -82,7 +82,7 @@ class AccountsTest {
         assertTrue(accounts.ensureAdmin("root@example.com", "twelve chars!"));
         assertFalse(accounts.ensureAdmin("root@example.com", "a different one!!"));
         User admin = accounts.login("root@example.com", "twelve chars!");
-        assertEquals(Set.of(Role.ADMIN, Role.USER), admin.roles());
+        assertEquals(Set.of(Role.ADMIN, Role.AUDIENCE), admin.roles());
     }
 
     @Test

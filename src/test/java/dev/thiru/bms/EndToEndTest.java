@@ -323,7 +323,7 @@ class EndToEndTest {
                         .count();
         assertEquals(2, booked);
 
-        // RBAC: a USER is refused the admin area; the seeded ADMIN gets in.
+        // RBAC: an AUDIENCE member is refused the admin area; the seeded ADMIN gets in.
         expect(403, send("GET", "/api/admin/stats", token, null));
         String admin =
                 (String)
@@ -351,6 +351,238 @@ class EndToEndTest {
         booted = null;
         assertTrue(Duration.ofNanos(System.nanoTime() - t0).toSeconds() < 10, "shutdown hung");
         stream.get(10, TimeUnit.SECONDS);
+    }
+
+    private String login(String email, String password) throws Exception {
+        return (String)
+                expect(
+                                200,
+                                send(
+                                        "POST",
+                                        "/api/auth/login",
+                                        null,
+                                        Map.of("email", email, "password", password)))
+                        .json()
+                        .get("accessToken");
+    }
+
+    private String register(String email) throws Exception {
+        expect(
+                201,
+                send(
+                        "POST",
+                        "/api/auth/register",
+                        null,
+                        Map.of("email", email, "password", PASSWORD, "name", "Someone")));
+        return login(email, PASSWORD);
+    }
+
+    private static long id(Object o) {
+        return ((Number) obj(o).get("id")).longValue();
+    }
+
+    @Test
+    void anAdminPromotesAnOwnerWhoSchedulesAShowThatSellsAndSeesTheSale() throws Exception {
+        String admin = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+
+        // Admin promotes an existing account and links it to one Bengaluru cinema.
+        String audienceBeforePromotion = register("owner@bms.test");
+        expect(403, send("GET", "/api/owner/cinemas", audienceBeforePromotion, null));
+        Map<String, Object> found =
+                expect(200, send("GET", "/api/admin/users?q=owner@bms.test", admin, null)).json();
+        long ownerId = id(arr(found.get("items")).get(0));
+        List<Object> cinemas =
+                arr(
+                        expect(200, send("GET", "/api/cinemas?city=bengaluru", null, null))
+                                .json()
+                                .get("items"));
+        long mine = id(cinemas.get(0));
+        long other = id(cinemas.get(1));
+        Map<String, Object> promoted =
+                expect(
+                                200,
+                                send(
+                                        "PUT",
+                                        "/api/admin/cinemas/" + mine + "/owners/" + ownerId,
+                                        admin,
+                                        null))
+                        .json();
+        assertEquals(List.of("AUDIENCE", "THEATRE_OWNER"), promoted.get("roles"));
+
+        // The new role reaches the token at the next sign-in.
+        String owner = login("owner@bms.test", PASSWORD);
+        List<Object> myCinemas = expect(200, send("GET", "/api/owner/cinemas", owner, null)).list();
+        assertEquals(1, myCinemas.size());
+        assertEquals(mine, id(myCinemas.get(0)));
+        Map<String, Object> screen = obj(arr(obj(myCinemas.get(0)).get("screens")).get(0));
+        Map<String, Long> prices = new HashMap<>();
+        for (Object c : arr(obj(screen.get("layout")).get("categories"))) {
+            prices.put((String) obj(c).get("code"), 20000L);
+        }
+
+        // The owner schedules a show past the 14 seeded days, so nothing overlaps.
+        Map<String, Object> movie =
+                obj(
+                        arr(expect(200, send("GET", "/api/movies?size=1", null, null))
+                                        .json()
+                                        .get("items"))
+                                .get(0));
+        String startsAt =
+                LocalDate.now(ZoneId.of("Asia/Kolkata"))
+                        .plusDays(20)
+                        .atTime(12, 0)
+                        .atZone(ZoneId.of("Asia/Kolkata"))
+                        .toInstant()
+                        .toString();
+        Map<String, Object> show =
+                expect(
+                                201,
+                                send(
+                                        "POST",
+                                        "/api/owner/shows",
+                                        owner,
+                                        Map.of(
+                                                "movieId",
+                                                movie.get("id"),
+                                                "screenId",
+                                                screen.get("id"),
+                                                "startsAt",
+                                                startsAt,
+                                                "language",
+                                                arr(movie.get("languages")).get(0),
+                                                "format",
+                                                "2D",
+                                                "prices",
+                                                prices),
+                                        "Idempotency-Key",
+                                        key()))
+                        .json();
+        long showId = id(show);
+
+        // An audience member books two seats and pays through the mock gateway.
+        String buyer = register("fan@bms.test");
+        List<String> seats = new ArrayList<>();
+        Map<String, Object> map =
+                expect(200, send("GET", "/api/shows/" + showId + "/seats", null, null)).json();
+        for (Object row : arr(map.get("rows"))) {
+            for (Object seat : arr(obj(row).get("seats"))) {
+                if ("AVAILABLE".equals(obj(seat).get("status")) && seats.size() < 2) {
+                    seats.add((String) obj(seat).get("id"));
+                }
+            }
+        }
+        Map<String, Object> hold =
+                expect(
+                                201,
+                                send(
+                                        "POST",
+                                        "/api/holds",
+                                        buyer,
+                                        Map.of("showId", showId, "seats", seats),
+                                        "Idempotency-Key",
+                                        key()))
+                        .json();
+        String bookingId =
+                (String)
+                        expect(
+                                        201,
+                                        send(
+                                                "POST",
+                                                "/api/bookings",
+                                                buyer,
+                                                Map.of("holdId", hold.get("id")),
+                                                "Idempotency-Key",
+                                                key()))
+                                .json()
+                                .get("id");
+        String paymentId =
+                (String)
+                        expect(
+                                        201,
+                                        send(
+                                                "POST",
+                                                "/api/bookings/" + bookingId + "/checkout",
+                                                buyer,
+                                                null,
+                                                "Idempotency-Key",
+                                                key()))
+                                .json()
+                                .get("paymentId");
+        expect(
+                303,
+                send(
+                        "POST",
+                        "/mock-gateway/" + paymentId + "/complete",
+                        null,
+                        Map.of("outcome", "SUCCESS")));
+        Map<String, Object> booking =
+                expect(200, send("GET", "/api/bookings/" + bookingId, buyer, null)).json();
+        assertEquals("CONFIRMED", booking.get("status"));
+        long amount = ((Number) booking.get("amount")).longValue();
+        assertEquals(40000L, amount);
+
+        // The owner sees the sale in their report, by show and in the list.
+        Map<String, Object> report =
+                expect(200, send("GET", "/api/owner/reports/shows/" + showId, owner, null)).json();
+        assertEquals(2, ((Number) report.get("booked")).intValue());
+        assertEquals(amount, ((Number) report.get("revenue")).longValue());
+        String day = startsAt.substring(0, 10);
+        Map<String, Object> list =
+                expect(
+                                200,
+                                send(
+                                        "GET",
+                                        "/api/owner/reports/shows?from=" + day + "&to=" + day,
+                                        owner,
+                                        null))
+                        .json();
+        assertTrue(
+                arr(list.get("items")).stream()
+                        .anyMatch(
+                                r ->
+                                        ((Number) obj(r).get("showId")).longValue() == showId
+                                                && ((Number) obj(r).get("revenue")).longValue()
+                                                        == amount));
+
+        // The owner is refused on another cinema with 404, and the audience on owner routes.
+        long otherScreen =
+                id(
+                        arr(expect(200, send("GET", "/api/cinemas/" + other, null, null))
+                                        .json()
+                                        .get("screens"))
+                                .get(0));
+        expect(
+                404,
+                send(
+                        "POST",
+                        "/api/owner/shows",
+                        owner,
+                        Map.of(
+                                "movieId",
+                                movie.get("id"),
+                                "screenId",
+                                otherScreen,
+                                "startsAt",
+                                startsAt,
+                                "language",
+                                arr(movie.get("languages")).get(0),
+                                "format",
+                                "2D",
+                                "prices",
+                                prices),
+                        "Idempotency-Key",
+                        key()));
+        expect(
+                404,
+                send(
+                        "POST",
+                        "/api/owner/cinemas/" + other + "/screens",
+                        owner,
+                        Map.of("name", "Sneaky", "layout", screen.get("layout")),
+                        "Idempotency-Key",
+                        key()));
+        expect(403, send("GET", "/api/admin/users", owner, null));
+        expect(403, send("GET", "/api/owner/cinemas", buyer, null));
     }
 
     private static void awaitLine(BlockingQueue<String> lines, String wanted) throws Exception {

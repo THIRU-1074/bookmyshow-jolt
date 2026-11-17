@@ -4,10 +4,13 @@ import dev.thiru.bms.domain.Cinema;
 import dev.thiru.bms.domain.City;
 import dev.thiru.bms.domain.Movie;
 import dev.thiru.bms.domain.Page;
+import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.Screen;
 import dev.thiru.bms.domain.SeatId;
 import dev.thiru.bms.domain.SeatLayout;
 import dev.thiru.bms.domain.Show;
+import dev.thiru.bms.domain.ShowStatus;
+import dev.thiru.bms.domain.User;
 import dev.thiru.bms.domain.port.AdminRepositories;
 import in.jolt.db.RowMapper;
 import in.jolt.db.Sql;
@@ -16,10 +19,16 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-/** Admin catalog writes and sales reports over the connection of one open transaction. */
+/**
+ * Admin catalog writes, sales reports, cinema owner links and role changes over the connection of
+ * one open transaction.
+ */
 final class SqlAdmin {
 
     private SqlAdmin() {}
@@ -253,7 +262,7 @@ final class SqlAdmin {
          * including those refunded later.
          */
         private static final String STAT =
-                "SELECT s.id, m.title, c.name AS cinema, s.starts_at, sc.capacity,"
+                "SELECT s.id, m.title, c.name AS cinema, s.starts_at, s.status, sc.capacity,"
                         + " (SELECT count(*) FROM booking_seat bs JOIN booking b"
                         + " ON b.id = bs.booking_id"
                         + " WHERE b.show_id = s.id AND b.status = 'CONFIRMED') AS booked,"
@@ -274,17 +283,21 @@ final class SqlAdmin {
                                 rs.getString("title"),
                                 rs.getString("cinema"),
                                 Sqls.instant(rs, "starts_at"),
+                                ShowStatus.valueOf(rs.getString("status")),
                                 rs.getInt("capacity"),
                                 rs.getInt("booked"),
                                 rs.getLong("paid"),
                                 rs.getLong("refunded"));
 
         private static final String WINDOW =
-                " WHERE (?1 IS NULL OR c.city_id = ?1) AND s.starts_at >= ?2 AND s.starts_at < ?3";
+                " WHERE (?1 IS NULL OR c.city_id = ?1)"
+                        + " AND (?2 IS NULL OR c.id IN"
+                        + " (SELECT cinema_id FROM cinema_owner WHERE user_id = ?2))"
+                        + " AND s.starts_at >= ?3 AND s.starts_at < ?4";
 
         @Override
         public Page<AdminRepositories.ShowStat> showStats(
-                String cityId, Instant from, Instant to, int page, int size) {
+                String cityId, Long ownerId, Instant from, Instant to, int page, int size) {
             long total =
                     sql.queryOne(
                                     "SELECT count(*) FROM show s"
@@ -293,14 +306,16 @@ final class SqlAdmin {
                                             + WINDOW,
                                     rs -> rs.getLong(1),
                                     cityId,
+                                    ownerId,
                                     Sqls.ms(from),
                                     Sqls.ms(to))
                             .orElse(0L);
             List<AdminRepositories.ShowStat> items =
                     sql.query(
-                            STAT + WINDOW + " ORDER BY s.starts_at, s.id LIMIT ?4 OFFSET ?5",
+                            STAT + WINDOW + " ORDER BY s.starts_at, s.id LIMIT ?5 OFFSET ?6",
                             ROW,
                             cityId,
+                            ownerId,
                             Sqls.ms(from),
                             Sqls.ms(to),
                             size,
@@ -359,6 +374,117 @@ final class SqlAdmin {
                             rs -> rs.getLong(1),
                             Sqls.ms(since))
                     .orElse(0L);
+        }
+    }
+
+    static final class CinemaOwners implements AdminRepositories.CinemaOwners {
+        private final Sql sql;
+
+        CinemaOwners(Sql sql) {
+            this.sql = sql;
+        }
+
+        @Override
+        public List<Cinema> cinemas(Long userId) {
+            return sql.query(
+                    "SELECT c.id, c.city_id, c.name, c.address FROM cinema c"
+                            + " WHERE ?1 IS NULL OR c.id IN"
+                            + " (SELECT cinema_id FROM cinema_owner WHERE user_id = ?1)"
+                            + " ORDER BY c.name, c.id",
+                    rs ->
+                            new Cinema(
+                                    rs.getLong(1),
+                                    rs.getString(2),
+                                    rs.getString(3),
+                                    rs.getString(4)),
+                    userId);
+        }
+
+        @Override
+        public List<Long> cinemaIdsOf(long userId) {
+            return sql.query(
+                    "SELECT cinema_id FROM cinema_owner WHERE user_id = ? ORDER BY cinema_id",
+                    rs -> rs.getLong(1),
+                    userId);
+        }
+
+        @Override
+        public boolean owns(long userId, long cinemaId) {
+            return exists(
+                    sql,
+                    "SELECT 1 FROM cinema_owner WHERE user_id = ? AND cinema_id = ?",
+                    userId,
+                    cinemaId);
+        }
+
+        @Override
+        public void link(long cinemaId, long userId) {
+            sql.update(
+                    "INSERT INTO cinema_owner (cinema_id, user_id) VALUES (?, ?)"
+                            + " ON CONFLICT DO NOTHING",
+                    cinemaId,
+                    userId);
+        }
+
+        @Override
+        public void unlink(long cinemaId, long userId) {
+            sql.update(
+                    "DELETE FROM cinema_owner WHERE cinema_id = ? AND user_id = ?",
+                    cinemaId,
+                    userId);
+        }
+
+        @Override
+        public void unlinkAll(long userId) {
+            sql.update("DELETE FROM cinema_owner WHERE user_id = ?", userId);
+        }
+    }
+
+    static final class UserRoles implements AdminRepositories.UserRoles {
+        // '!' escapes LIKE wildcards, so a search for "%" or "_" matches only those characters.
+        private static final String MATCH =
+                " WHERE ?1 IS NULL OR lower(email) LIKE ?1 ESCAPE '!'"
+                        + " OR lower(name) LIKE ?1 ESCAPE '!'";
+
+        private final Sql sql;
+
+        UserRoles(Sql sql) {
+            this.sql = sql;
+        }
+
+        @Override
+        public Page<User> page(String q, int page, int size) {
+            String like = q == null || q.isBlank() ? null : "%" + escape(q.strip()) + "%";
+            long total =
+                    sql.queryOne("SELECT count(*) FROM app_user" + MATCH, rs -> rs.getLong(1), like)
+                            .orElse(0L);
+            List<User> items =
+                    sql.query(
+                            "SELECT "
+                                    + SqlBookings.USER_COLS
+                                    + " FROM app_user"
+                                    + MATCH
+                                    + " ORDER BY id LIMIT ?2 OFFSET ?3",
+                            SqlBookings.USER,
+                            like,
+                            size,
+                            (long) Math.max(page - 1, 0) * size);
+            return new Page<>(items, page, size, total);
+        }
+
+        private static String escape(String q) {
+            return q.toLowerCase(Locale.ROOT)
+                    .replace("!", "!!")
+                    .replace("%", "!%")
+                    .replace("_", "!_");
+        }
+
+        @Override
+        public void saveRoles(long userId, Set<Role> roles) {
+            sql.update(
+                    "UPDATE app_user SET roles = ? WHERE id = ?",
+                    roles.stream().map(Role::name).sorted().collect(Collectors.joining(",")),
+                    userId);
         }
     }
 }

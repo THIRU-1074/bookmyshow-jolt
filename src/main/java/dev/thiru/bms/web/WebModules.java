@@ -12,6 +12,7 @@ import dev.thiru.bms.application.CreateBooking;
 import dev.thiru.bms.application.CreateHold;
 import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.application.ProcessPaymentWebhook;
+import dev.thiru.bms.application.UserAdmin;
 import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.User;
 import in.jolt.App;
@@ -36,7 +37,8 @@ import java.util.Map;
  *
  * <p>Middleware order is SPEC 9: request id, request log, security headers, problem mapping, gzip,
  * IP rate limits, CSRF on cookie routes, then the RBAC gate (JWT and role checks, see {@link
- * Permissions}), per-user rate limits and Idempotency-Key as route middleware.
+ * Permissions}) with prefix-wide role layers on {@code /api/admin} and {@code /api/owner}, per-user
+ * rate limits and Idempotency-Key as route middleware.
  */
 public final class WebModules {
 
@@ -81,6 +83,7 @@ public final class WebModules {
         app.use("/api/auth", Guards.adapt(Csrf.protect(), mapper));
         app.use("/api", rbac.gate());
         app.use("/api/admin", rbac.adminLayer());
+        app.use("/api/owner", rbac.ownerLayer());
 
         Middleware idempotent = new IdempotencyFilter(deps.idempotency(), deps.clock()).required();
         // Runs after the gate, so "user" is the verified subject.
@@ -141,13 +144,19 @@ public final class WebModules {
                         deps.webhookVerifier(),
                         mock,
                         mapper));
+        AdminCatalog adminCatalog = new AdminCatalog(deps.uow(), deps.clock());
+        AdminReports reports = new AdminReports(deps.uow(), deps.clock());
+        CancelShow cancelShow =
+                new CancelShow(deps.uow(), deps.gateway(), deps.publisher(), deps.clock());
         app.module(
                 new AdminModule(
-                        new AdminCatalog(deps.uow(), deps.clock()),
-                        new AdminReports(deps.uow(), deps.clock()),
-                        new CancelShow(deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
+                        adminCatalog,
+                        reports,
+                        cancelShow,
+                        new UserAdmin(deps.uow()),
                         deps.live(),
                         idempotent));
+        app.module(new OwnerModule(adminCatalog, reports, cancelShow, idempotent));
         // TODO(jolt#71): register the DB check with exposeMetrics once apps can add checks.
         app.get(
                 "/api/health",

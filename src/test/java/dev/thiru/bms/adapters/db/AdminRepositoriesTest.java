@@ -8,14 +8,17 @@ import dev.thiru.bms.domain.Certificate;
 import dev.thiru.bms.domain.Cinema;
 import dev.thiru.bms.domain.City;
 import dev.thiru.bms.domain.Movie;
+import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.Screen;
 import dev.thiru.bms.domain.SeatLayout;
 import dev.thiru.bms.domain.Show;
+import dev.thiru.bms.domain.ShowStatus;
 import dev.thiru.bms.domain.port.AdminRepositories;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class AdminRepositoriesTest extends DbTest {
@@ -211,10 +214,153 @@ class AdminRepositoriesTest extends DbTest {
         assertEquals(0L, (long) tx(r -> r.reports().countConfirmedSince(NOW.plusSeconds(1))));
 
         Instant from = show.startsAt();
-        var page = tx(r -> r.reports().showStats(null, from, from.plusSeconds(1), 1, 20));
+        var page = tx(r -> r.reports().showStats(null, null, from, from.plusSeconds(1), 1, 20));
         assertTrue(page.items().stream().anyMatch(s -> s.showId() == showId));
-        var none = tx(r -> r.reports().showStats("no-such-city", from, from.plusSeconds(1), 1, 20));
+        assertEquals(ShowStatus.SCHEDULED, stat.status());
+        var none =
+                tx(
+                        r ->
+                                r.reports()
+                                        .showStats(
+                                                "no-such-city",
+                                                null,
+                                                from,
+                                                from.plusSeconds(1),
+                                                1,
+                                                20));
         assertEquals(0, none.total());
         assertTrue(tx(r -> r.reports().categoryStats(999_999)).isEmpty());
+    }
+
+    private long cinemaOf(long showId) {
+        return db.queryOne(
+                        "SELECT sc.cinema_id FROM show s JOIN screen sc ON sc.id = s.screen_id"
+                                + " WHERE s.id = ?",
+                        rs -> rs.getLong(1),
+                        showId)
+                .orElseThrow();
+    }
+
+    @Test
+    void cinemaOwnerLinksAreIdempotentAndDefineTheScope() {
+        long owner = newUser("owner@example.com");
+        long other = newUser("other@example.com");
+        List<Cinema> all = tx(r -> r.cinemaOwners().cinemas(null));
+        assertTrue(all.size() >= 6);
+        Cinema a = all.get(0);
+        Cinema b = all.get(1);
+
+        tx(
+                r -> {
+                    r.cinemaOwners().link(a.id(), owner);
+                    return null;
+                });
+        tx(
+                r -> {
+                    r.cinemaOwners().link(a.id(), owner);
+                    return null;
+                });
+        tx(
+                r -> {
+                    r.cinemaOwners().link(b.id(), owner);
+                    return null;
+                });
+        tx(
+                r -> {
+                    r.cinemaOwners().link(b.id(), other);
+                    return null;
+                });
+
+        assertEquals(
+                List.of(a.id(), b.id()).stream().sorted().toList(),
+                tx(r -> r.cinemaOwners().cinemaIdsOf(owner)));
+        assertEquals(
+                List.of(a, b).stream()
+                        .sorted(java.util.Comparator.comparing(Cinema::name))
+                        .toList(),
+                tx(r -> r.cinemaOwners().cinemas(owner)));
+        assertTrue(flag(r -> r.cinemaOwners().owns(owner, a.id())));
+        assertFalse(flag(r -> r.cinemaOwners().owns(other, a.id())));
+
+        tx(
+                r -> {
+                    r.cinemaOwners().unlink(a.id(), owner);
+                    return null;
+                });
+        tx(
+                r -> {
+                    r.cinemaOwners().unlink(a.id(), owner);
+                    return null;
+                });
+        assertEquals(List.of(b.id()), tx(r -> r.cinemaOwners().cinemaIdsOf(owner)));
+
+        tx(
+                r -> {
+                    r.cinemaOwners().unlinkAll(owner);
+                    return null;
+                });
+        assertEquals(List.of(), tx(r -> r.cinemaOwners().cinemaIdsOf(owner)));
+        assertEquals(List.of(b.id()), tx(r -> r.cinemaOwners().cinemaIdsOf(other)));
+        assertEquals(List.of(), tx(r -> r.cinemaOwners().cinemas(owner)));
+    }
+
+    @Test
+    void usersArePagedSearchedAndTheirRolesSaved() {
+        long ada = newUser("ada@example.com");
+        long bob = newUser("bob@example.com");
+        var page = tx(r -> r.userRoles().page(null, 1, 1));
+        assertEquals(2, page.total());
+        assertEquals(List.of(ada), page.items().stream().map(u -> u.id()).toList());
+        var found = tx(r -> r.userRoles().page("BOB@", 1, 20));
+        assertEquals(List.of(bob), found.items().stream().map(u -> u.id()).toList());
+        assertEquals(0, tx(r -> r.userRoles().page("nobody", 1, 20)).total());
+        // Name matches too, and LIKE wildcards in the query are taken literally.
+        assertEquals(2, tx(r -> r.userRoles().page("test user", 1, 20)).total());
+        assertEquals(0, tx(r -> r.userRoles().page("%", 1, 20)).total());
+
+        tx(
+                r -> {
+                    r.userRoles().saveRoles(bob, Set.of(Role.AUDIENCE, Role.THEATRE_OWNER));
+                    return null;
+                });
+        assertEquals(
+                Set.of(Role.AUDIENCE, Role.THEATRE_OWNER),
+                tx(r -> r.users().findById(bob)).orElseThrow().roles());
+        assertEquals(
+                "AUDIENCE,THEATRE_OWNER",
+                db.queryOne("SELECT roles FROM app_user WHERE id = ?", rs -> rs.getString(1), bob)
+                        .orElseThrow());
+    }
+
+    @Test
+    void reportsCanBeLimitedToAnOwnersCinemas() {
+        long showId = anyShowId();
+        Show show = tx(r -> r.shows().findById(showId)).orElseThrow();
+        long owner = newUser("owner@example.com");
+        Instant from = show.startsAt();
+        Instant to = from.plusSeconds(1);
+        assertEquals(0, tx(r -> r.reports().showStats(null, owner, from, to, 1, 20)).total());
+        long cinema = cinemaOf(showId);
+        tx(
+                r -> {
+                    r.cinemaOwners().link(cinema, owner);
+                    return null;
+                });
+        var mine = tx(r -> r.reports().showStats(null, owner, from, to, 1, 20));
+        assertTrue(mine.items().stream().anyMatch(s -> s.showId() == showId));
+        String cinemaName = tx(r -> r.cinemas().findById(cinema)).orElseThrow().name();
+        var everything =
+                tx(
+                        r ->
+                                r.reports()
+                                        .showStats(
+                                                null,
+                                                owner,
+                                                Instant.EPOCH,
+                                                to.plusSeconds(864_000L),
+                                                1,
+                                                100));
+        assertTrue(everything.total() > 1);
+        assertTrue(everything.items().stream().allMatch(s -> s.cinemaName().equals(cinemaName)));
     }
 }

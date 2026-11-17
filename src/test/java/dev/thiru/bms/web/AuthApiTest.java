@@ -5,7 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import in.jolt.auth.JwtAuth;
 import in.jolt.test.JoltTest;
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +29,7 @@ class AuthApiTest {
     void registerReturnsUserTokenAndAStrictHttpOnlyRefreshCookie() {
         var res = register(kit.http, "Ada@Example.com").expect(201);
         res.jsonEquals("user.email", "ada@example.com")
-                .jsonEquals("user.roles.0", "USER")
+                .jsonEquals("user.roles.0", "AUDIENCE")
                 .jsonEquals("expiresIn", 900)
                 .header("Cache-Control", "no-store");
         assertNotNull(res.jsonField("accessToken"));
@@ -55,7 +58,7 @@ class AuthApiTest {
                                                 "roles",
                                                 java.util.List.of("ADMIN")))
                                 .expect(201)
-                                .jsonEquals("user.roles.0", "USER")
+                                .jsonEquals("user.roles.0", "AUDIENCE")
                                 .jsonField("accessToken");
         kit.http
                 .get("/api/admin/stats")
@@ -102,7 +105,7 @@ class AuthApiTest {
                 .header("Authorization", WebKit.bearer(token))
                 .expect(200)
                 .jsonEquals("email", "ada@example.com")
-                .jsonEquals("roles.0", "USER");
+                .jsonEquals("roles.0", "AUDIENCE");
         var anon = kit.http.get("/api/me").expect(401).jsonEquals("code", "UNAUTHENTICATED");
         assertTrue(anon.header("Content-Type").startsWith(PROBLEM));
         assertEquals("Bearer", anon.header("WWW-Authenticate"));
@@ -201,5 +204,18 @@ class AuthApiTest {
         var res = kit.http.get("/api/me").header("X-Request-Id", "req-123").expect(401);
         res.jsonEquals("requestId", "req-123");
         assertNotEquals(null, res.header("X-Request-Id"));
+    }
+
+    @Test
+    void aTokenIssuedBeforeTheRoleRenameStillCountsAsAudience() {
+        String legacy =
+                JwtAuth.hs256(WebKit.SECRET)
+                        .sign("1", Map.of("roles", List.of("USER")), Duration.ofMinutes(5));
+        kit.http.get("/api/bookings").header("Authorization", WebKit.bearer(legacy)).expect(200);
+        kit.http.get("/api/admin/stats").header("Authorization", WebKit.bearer(legacy)).expect(403);
+        String unknown =
+                JwtAuth.hs256(WebKit.SECRET)
+                        .sign("1", Map.of("roles", List.of("ROOT")), Duration.ofMinutes(5));
+        kit.http.get("/api/bookings").header("Authorization", WebKit.bearer(unknown)).expect(403);
     }
 }

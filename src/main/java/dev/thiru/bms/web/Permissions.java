@@ -12,19 +12,25 @@ import java.util.Optional;
 final class Permissions {
 
     /**
-     * Who may call. OWNER and OWNER_OR_ADMIN additionally check the resource owner in the handler.
+     * Who may call. OWNER and OWNER_OR_ADMIN additionally check the resource owner in the use case;
+     * THEATRE_OWNER additionally checks the cinema scope in the use case.
      */
     enum Access {
         /** No credentials. */
         PUBLIC,
         /** Verified by the request itself (webhook signature, refresh cookie), not by a JWT. */
         SELF_AUTHENTICATED,
-        /** Any signed-in user. */
-        USER,
+        /** Any signed-in user (every account holds AUDIENCE). */
+        SIGNED_IN,
         /** Signed in and owning the resource; a stranger gets 404. */
         OWNER,
         /** Owner, or an administrator; a stranger gets 404. */
         OWNER_OR_ADMIN,
+        /**
+         * THEATRE_OWNER or ADMIN role; an owner reaches only the cinemas linked to them (others get
+         * 404), an admin every cinema.
+         */
+        THEATRE_OWNER,
         /** ADMIN role. */
         ADMIN;
 
@@ -42,7 +48,7 @@ final class Permissions {
                     r("POST", "/api/auth/login", Access.PUBLIC),
                     r("POST", "/api/auth/refresh", Access.SELF_AUTHENTICATED),
                     r("POST", "/api/auth/logout", Access.SELF_AUTHENTICATED),
-                    r("GET", "/api/me", Access.USER),
+                    r("GET", "/api/me", Access.SIGNED_IN),
                     // Catalog and seats (public)
                     r("GET", "/api/cities", Access.PUBLIC),
                     r("GET", "/api/movies", Access.PUBLIC),
@@ -54,10 +60,10 @@ final class Permissions {
                     r("GET", "/api/shows/:id/seats", Access.PUBLIC),
                     r("GET", "/api/shows/:id/events", Access.PUBLIC),
                     // Holds and bookings
-                    r("POST", "/api/holds", Access.USER),
+                    r("POST", "/api/holds", Access.SIGNED_IN),
                     r("DELETE", "/api/holds/:id", Access.OWNER),
-                    r("POST", "/api/bookings", Access.USER),
-                    r("GET", "/api/bookings", Access.USER),
+                    r("POST", "/api/bookings", Access.SIGNED_IN),
+                    r("GET", "/api/bookings", Access.SIGNED_IN),
                     r("GET", "/api/bookings/:id", Access.OWNER_OR_ADMIN),
                     r("POST", "/api/bookings/:id/checkout", Access.OWNER),
                     r("POST", "/api/bookings/:id/cancel", Access.OWNER),
@@ -86,6 +92,20 @@ final class Permissions {
                     r("GET", "/api/admin/reports/shows", Access.ADMIN),
                     r("GET", "/api/admin/reports/shows/:id", Access.ADMIN),
                     r("GET", "/api/admin/stats", Access.ADMIN),
+                    // Admin: users, roles and theatre owner links
+                    r("GET", "/api/admin/users", Access.ADMIN),
+                    r("PUT", "/api/admin/users/:id/roles/:role", Access.ADMIN),
+                    r("DELETE", "/api/admin/users/:id/roles/:role", Access.ADMIN),
+                    r("PUT", "/api/admin/cinemas/:id/owners/:userId", Access.ADMIN),
+                    r("DELETE", "/api/admin/cinemas/:id/owners/:userId", Access.ADMIN),
+                    // Theatre owner, scoped to the caller's cinemas
+                    r("GET", "/api/owner/cinemas", Access.THEATRE_OWNER),
+                    r("POST", "/api/owner/cinemas/:id/screens", Access.THEATRE_OWNER),
+                    r("PUT", "/api/owner/screens/:id", Access.THEATRE_OWNER),
+                    r("POST", "/api/owner/shows", Access.THEATRE_OWNER),
+                    r("POST", "/api/owner/shows/:id/cancel", Access.THEATRE_OWNER),
+                    r("GET", "/api/owner/reports/shows", Access.THEATRE_OWNER),
+                    r("GET", "/api/owner/reports/shows/:id", Access.THEATRE_OWNER),
                     // Ops
                     r("GET", "/api/health", Access.PUBLIC));
 

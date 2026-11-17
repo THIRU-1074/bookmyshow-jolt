@@ -13,8 +13,9 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Account lifecycle. Public registration can only ever create a USER: roles are never read from a
- * request, so privilege comes only from {@link #ensureAdmin} (environment seeding).
+ * Account lifecycle. Public registration can only ever create an AUDIENCE account: roles are never
+ * read from a request, so privilege comes only from {@link #ensureAdmin} (environment seeding) and
+ * from an administrator through {@link UserAdmin}.
  */
 public final class Accounts {
 
@@ -44,7 +45,7 @@ public final class Accounts {
         // (the hash is a placeholder) to report every problem at once.
         for (String[] probe : new String[][] {{email, "Ada"}, {"a@b.co", name}}) {
             try {
-                new User(0, probe[0], "x", probe[1], Set.of(Role.USER), clock.instant());
+                new User(0, probe[0], "x", probe[1], Set.of(Role.AUDIENCE), clock.instant());
             } catch (DomainException e) {
                 errors.putAll(e.errors());
             }
@@ -66,7 +67,7 @@ public final class Accounts {
                                             normalized,
                                             hash,
                                             name.trim(),
-                                            Set.of(Role.USER),
+                                            Set.of(Role.AUDIENCE),
                                             clock.instant()));
                 });
     }
@@ -111,7 +112,7 @@ public final class Accounts {
                                             normalized,
                                             hash,
                                             "Administrator",
-                                            Set.of(Role.ADMIN, Role.USER),
+                                            Set.of(Role.ADMIN, Role.AUDIENCE),
                                             clock.instant()));
                     return true;
                 });

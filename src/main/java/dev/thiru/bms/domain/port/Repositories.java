@@ -33,4 +33,12 @@ public interface Repositories {
     default AdminRepositories.Reports reports() {
         throw new UnsupportedOperationException("reports");
     }
+
+    default AdminRepositories.CinemaOwners cinemaOwners() {
+        throw new UnsupportedOperationException("cinemaOwners");
+    }
+
+    default AdminRepositories.UserRoles userRoles() {
+        throw new UnsupportedOperationException("userRoles");
+    }
 }
