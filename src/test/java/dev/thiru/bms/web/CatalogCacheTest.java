@@ -5,11 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.kernel.catalog.City;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * Public catalog reads come from a 60 s TtlCache (the same minute as their Cache-Control); admin
@@ -20,7 +20,7 @@ class CatalogCacheTest {
 
     private static final String SHOWS = "/api/movies/1/shows?city=bengaluru&date=2026-11-22";
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
 
     private List<?> cityIds() {
         List<?> cities = kit.http.get("/api/cities").expect(200).json(List.class);
@@ -28,7 +28,15 @@ class CatalogCacheTest {
     }
 
     private void addCityBehindTheApi(String id) {
-        kit.world.inTransaction(r -> r.catalogWrites().saveCity(City.of(id, id, "Asia/Kolkata")));
+        kit.db()
+                .inTransaction(
+                        tx ->
+                                tx.update(
+                                        "INSERT INTO city (id, name, time_zone)"
+                                                + " VALUES (?, ?, 'Asia/Kolkata')",
+                                        id,
+                                        // Capitalised as real names are: cities list by name.
+                                        Character.toUpperCase(id.charAt(0)) + id.substring(1)));
     }
 
     @Test

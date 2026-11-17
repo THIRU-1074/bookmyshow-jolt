@@ -16,7 +16,12 @@ class LiveSseTest {
     @Test
     @Timeout(20)
     void streamStartsWithRetryAndSnapshotThenForwardsEventsAndHeartbeats() throws Exception {
-        WebKit kit = new WebKit(true, Duration.ofMillis(500));
+        try (WebKit kit = new WebKit(true, Duration.ofMillis(500))) {
+            streamStarts(kit);
+        }
+    }
+
+    private static void streamStarts(WebKit kit) throws Exception {
         // The handler blocks while streaming, so the event arrives from another thread once the
         // route has subscribed.
         Thread pusher =
@@ -59,7 +64,12 @@ class LiveSseTest {
     @Test
     @Timeout(20)
     void aClosedSubscriptionEndsTheStream() {
-        WebKit kit = new WebKit(true, Duration.ofMillis(100));
+        try (WebKit kit = new WebKit(true, Duration.ofMillis(100))) {
+            closedSubscription(kit);
+        }
+    }
+
+    private static void closedSubscription(WebKit kit) {
         Thread.ofVirtual()
                 .start(
                         () -> {
@@ -77,7 +87,12 @@ class LiveSseTest {
 
     @Test
     void unknownShowIs404AndAFullHubIs503() {
-        WebKit kit = new WebKit(true, Duration.ofMillis(100));
+        try (WebKit kit = new WebKit(true, Duration.ofMillis(100))) {
+            fullHub(kit);
+        }
+    }
+
+    private static void fullHub(WebKit kit) {
         kit.http.get("/api/shows/404/events").expect(404).jsonEquals("code", "NOT_FOUND");
         for (int i = 0; i < 5; i++) {
             kit.live.subscribe(9);

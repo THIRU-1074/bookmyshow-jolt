@@ -8,10 +8,11 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 class AdminApiTest {
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
     private final String admin = kit.admin();
 
     private JoltTest.Call post(String path) {

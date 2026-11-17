@@ -11,10 +11,11 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 class BookingApiTest {
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
     private final String ada = kit.user("ada@example.com");
 
     private String auth() {
@@ -81,7 +82,7 @@ class BookingApiTest {
                 .header("Idempotency-Replayed", "true")
                 .header("X-Request-Id", "second-try");
         assertTrue(replay.header("Content-Type").startsWith("application/json"));
-        assertEquals(1, kit.world.allHolds().size());
+        assertEquals(1, kit.count("seat_hold"));
 
         kit.http
                 .post("/api/holds")
@@ -360,7 +361,8 @@ class BookingApiTest {
 
     @Test
     void mockGatewayIsAbsentWhenDisabled() {
-        WebKit off = new WebKit(false, Duration.ofSeconds(15));
-        off.http.get("/mock-gateway/abc").expect(404);
+        try (WebKit off = new WebKit(false, Duration.ofSeconds(15))) {
+            off.http.get("/mock-gateway/abc").expect(404);
+        }
     }
 }

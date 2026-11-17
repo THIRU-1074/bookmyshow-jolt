@@ -5,10 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 class OpsApiTest {
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
 
     @Test
     void healthReportsTheDatabase() {

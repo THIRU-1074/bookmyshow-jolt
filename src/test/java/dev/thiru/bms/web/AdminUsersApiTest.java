@@ -5,11 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import in.jolt.test.JoltTest;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /** Users, roles and theatre owner links under /api/admin. */
 class AdminUsersApiTest {
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
     private final String admin = kit.admin();
 
     private JoltTest.Call call(String method, String path) {

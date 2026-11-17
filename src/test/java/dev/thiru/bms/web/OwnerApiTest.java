@@ -9,11 +9,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /** The /api/owner routes for an owner of the seeded cinema 2 (screen 5, show 9). */
 class OwnerApiTest {
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
     private final String owner = kit.owner("owner@example.com", 2);
 
     static Map<String, Object> layout(int seats) {
@@ -79,7 +80,7 @@ class OwnerApiTest {
         Number screen =
                 (Number)
                         post("/api/owner/cinemas/2/screens")
-                                .json(Map.of("name", "Audi 9", "layout", layout(12)))
+                                .json(Map.of("name", "Screen 9", "layout", layout(12)))
                                 .expect(201)
                                 .jsonEquals("cinemaId", 2)
                                 .jsonEquals("capacity", 12)
@@ -87,7 +88,7 @@ class OwnerApiTest {
         kit.http
                 .put("/api/owner/screens/" + screen)
                 .header("Authorization", WebKit.bearer(owner))
-                .json(Map.of("name", "Audi 9", "layout", layout(20)))
+                .json(Map.of("name", "Screen 9", "layout", layout(20)))
                 .expect(200)
                 .jsonEquals("capacity", 20);
         post("/api/owner/cinemas/2/screens")
@@ -99,7 +100,8 @@ class OwnerApiTest {
                 .header("Authorization", WebKit.bearer(owner))
                 .json(Map.of("name", "No key", "layout", layout(12)))
                 .expect(400);
-        get("/api/owner/cinemas").expect(200).jsonEquals("0.screens.1.name", "Audi 9");
+        // Screens list by name, so "Screen 9" follows the seeded "Screen 1".
+        get("/api/owner/cinemas").expect(200).jsonEquals("0.screens.1.name", "Screen 9");
     }
 
     @Test
@@ -120,7 +122,16 @@ class OwnerApiTest {
         post("/api/owner/shows/" + FakeWorld.SHOW_ID + "/cancel")
                 .expect(200)
                 .jsonEquals("refunded", 1);
-        assertEquals("CANCELLED", kit.world.show(FakeWorld.SHOW_ID).status().name());
+        assertEquals(
+                "CANCELLED",
+                kit.db()
+                        .inTransaction(
+                                tx ->
+                                        tx.queryOne(
+                                                "SELECT status FROM show WHERE id = ?",
+                                                rs -> rs.getString(1),
+                                                FakeWorld.SHOW_ID))
+                        .orElseThrow());
     }
 
     @Test

@@ -11,12 +11,13 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 class AuthApiTest {
 
     private static final String PROBLEM = "application/problem+json";
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
 
     private JoltTest.Call register(JoltTest client, String email) {
         return client.post("/api/auth/register")

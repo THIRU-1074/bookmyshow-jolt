@@ -9,11 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /** Server-side role and ownership enforcement on every protected route. */
 class RbacTest {
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
 
     private static String concrete(String pattern) {
         return pattern.replaceAll(":\\w+", "1");

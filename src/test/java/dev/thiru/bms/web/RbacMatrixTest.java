@@ -49,9 +49,12 @@ class RbacMatrixTest {
 
     @Test
     void everyRegisteredRouteHasExactlyOneRuleAndEveryRuleARoute() {
-        WebKit kit = new WebKit();
+        List<Route> routes;
+        try (WebKit kit = new WebKit()) {
+            routes = kit.app.routes();
+        }
         Set<String> registered =
-                kit.app.routes().stream()
+                routes.stream()
                         .filter(
                                 r ->
                                         r.path().startsWith("/api/")

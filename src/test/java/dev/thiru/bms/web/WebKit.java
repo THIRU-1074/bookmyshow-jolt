@@ -2,15 +2,22 @@ package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.fakes.FakeWorld;
+import dev.thiru.bms.domain.port.AdminRepositories;
+import dev.thiru.bms.domain.port.UnitOfWork;
 import dev.thiru.bms.kernel.account.Role;
 import dev.thiru.bms.kernel.account.User;
+import dev.thiru.bms.kernel.catalog.Cinema;
+import dev.thiru.bms.kernel.catalog.City;
+import dev.thiru.bms.kernel.catalog.Movie;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.ports.Db;
 import dev.thiru.bms.testing.FakeLive;
 import dev.thiru.bms.testing.MemoryRefreshTokens;
 import dev.thiru.bms.testing.PlainHasher;
+import dev.thiru.bms.testing.SliceKit;
 import in.jolt.App;
 import in.jolt.IdempotencyStore;
-import in.jolt.Jolt;
-import in.jolt.JoltConfig;
 import in.jolt.test.JoltTest;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -20,20 +27,36 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.ExtensionContext;
 
-/** The whole web layer on in-memory fakes: no socket, no database. */
-final class WebKit {
+/**
+ * The whole web layer (pipeline and every legacy route module) on {@link SliceKit}: one SQLite
+ * database behind both the legacy repositories and {@code ports.Db}, so a slice swapped into {@link
+ * WebModules#routes} and the legacy routes around it read and write the same rows, as in
+ * production. {@link FakeWorld} is only the gateway, ids, clock and seat-event publisher.
+ *
+ * <p>The V2 catalog is replaced by {@link FakeWorld#seeded()}'s (city bengaluru, cinema 2, screen 5
+ * with 23 seats, movie 1, show 9 at {@code T0} + 3 days): V2 schedules its shows from the day the
+ * database is migrated, and these tests run on the fixed {@link FakeWorld#T0}. Slice tests use the
+ * V2 seed through {@link SliceKit} directly.
+ */
+final class WebKit implements AutoCloseable, AfterEachCallback {
 
-    static final String SECRET = "test-secret-that-is-at-least-32-bytes-long";
-    static final String PASSWORD = "correct-horse-battery";
-    static final String WEBHOOK_SECRET = "webhook-secret-that-is-at-least-32-bytes";
+    static final String SECRET = SliceKit.SECRET;
+    static final String PASSWORD = SliceKit.PASSWORD;
+    static final String WEBHOOK_SECRET = SliceKit.WEBHOOK_SECRET;
+    static final long CINEMA_ID = 2;
+    static final long MOVIE_ID = 1;
 
     final FakeWorld world = FakeWorld.seeded();
-    final MemoryRefreshTokens refreshTokens = new MemoryRefreshTokens();
-    final IdempotencyStore idempotency = IdempotencyStore.inMemory();
-    final FakeLive live = new FakeLive(5);
     final List<ProcessPaymentWebhook.Event> sentWebhooks = new CopyOnWriteArrayList<>();
     final AtomicBoolean dbUp = new AtomicBoolean(true);
+    final SliceKit slice;
+    final UnitOfWork uow;
+    final MemoryRefreshTokens refreshTokens;
+    final IdempotencyStore idempotency;
+    final FakeLive live;
     final App app;
     final JoltTest http;
     private final AtomicInteger addresses = new AtomicInteger();
@@ -43,32 +66,133 @@ final class WebKit {
     }
 
     WebKit(boolean mockGateway, Duration heartbeat) {
-        app = Jolt.create(JoltConfig.defaults().problemJson(true));
-        WebDeps deps =
-                new WebDeps(
-                        world,
-                        world.clock,
-                        world.policy,
-                        world,
-                        new PlainHasher(),
-                        refreshTokens,
-                        idempotency,
-                        world,
-                        world,
-                        event -> {
-                            sentWebhooks.add(event);
-                            return 200;
-                        },
-                        live,
-                        dbUp::get,
-                        new WebDeps.Settings(
-                                SECRET,
-                                WEBHOOK_SECRET,
-                                mockGateway,
-                                Path.of("src/main/resources/views"),
-                                heartbeat));
-        WebModules.install(app, deps);
-        http = JoltTest.of(app);
+        slice =
+                SliceKit.builder()
+                        .clock(world.clock)
+                        .mockGateway(mockGateway)
+                        .mount(
+                                k -> {
+                                    seedFakeWorldCatalog(k.testDb().legacyUnitOfWork(), k.db());
+                                    WebModules.routes(
+                                            k.pipeline(), deps(k, mockGateway, heartbeat));
+                                })
+                        .boot();
+        uow = slice.testDb().legacyUnitOfWork();
+        refreshTokens = slice.refreshTokens();
+        idempotency = slice.idempotency();
+        live = slice.live();
+        app = slice.app();
+        http = slice.http();
+    }
+
+    private WebDeps deps(SliceKit k, boolean mockGateway, Duration heartbeat) {
+        return new WebDeps(
+                k.testDb().legacyUnitOfWork(),
+                world.clock,
+                world.policy,
+                world,
+                k.hasher(),
+                k.refreshTokens(),
+                k.idempotency(),
+                world,
+                world,
+                event -> {
+                    sentWebhooks.add(event);
+                    return 200;
+                },
+                k.live(),
+                dbUp::get,
+                new WebDeps.Settings(
+                        SECRET,
+                        WEBHOOK_SECRET,
+                        mockGateway,
+                        Path.of("src/main/resources/views"),
+                        heartbeat));
+    }
+
+    /**
+     * Swaps the V2 catalog for FakeWorld's, written through the production repositories so the JSON
+     * columns are exactly what the adapters write. Rows are inserted bare first because the
+     * repositories update a row whose id is set.
+     */
+    private void seedFakeWorldCatalog(UnitOfWork sql, Db db) {
+        Cinema cinema = world.inTransaction(w -> w.cinemas().findById(CINEMA_ID)).orElseThrow();
+        Screen screen =
+                world.inTransaction(w -> w.screens().findById(FakeWorld.SCREEN_ID)).orElseThrow();
+        Movie movie = world.inTransaction(w -> w.movies().findById(MOVIE_ID)).orElseThrow();
+        Show show = world.inTransaction(w -> w.shows().findById(FakeWorld.SHOW_ID)).orElseThrow();
+        List<City> cities = world.inTransaction(w -> w.cities().findAll());
+        db.inTransaction(
+                tx -> {
+                    for (String table :
+                            List.of(
+                                    "show",
+                                    "screen",
+                                    "cinema",
+                                    "movie_language",
+                                    "movie_genre",
+                                    "movie",
+                                    "city")) {
+                        tx.update("DELETE FROM " + table);
+                    }
+                    return null;
+                });
+        sql.inTransaction(
+                r -> {
+                    AdminRepositories.CatalogWrites writes = r.catalogWrites();
+                    cities.forEach(writes::saveCity);
+                    return null;
+                });
+        db.inTransaction(
+                tx -> {
+                    tx.insert(
+                            "INSERT INTO cinema (id, city_id, name, address) VALUES (?, ?, '', '')",
+                            cinema.id(),
+                            cinema.cityId());
+                    tx.insert(
+                            "INSERT INTO screen (id, cinema_id, name, layout_json, capacity)"
+                                    + " VALUES (?, ?, '', '{}', 1)",
+                            screen.id(),
+                            screen.cinemaId());
+                    tx.insert(
+                            "INSERT INTO movie (id, title, certificate, duration_minutes,"
+                                    + " release_date, poster_url, description)"
+                                    + " VALUES (?, '', 'U', 1, '', '', '')",
+                            movie.id());
+                    return null;
+                });
+        sql.inTransaction(
+                r -> {
+                    AdminRepositories.CatalogWrites writes = r.catalogWrites();
+                    writes.saveCinema(cinema);
+                    writes.saveScreen(screen);
+                    writes.saveMovie(movie);
+                    r.shows().save(show);
+                    return null;
+                });
+    }
+
+    @Override
+    public void afterEach(ExtensionContext context) {
+        close();
+    }
+
+    @Override
+    public void close() {
+        slice.close();
+    }
+
+    /** Rows in {@code table}, for tests that check what a request left behind. */
+    long count(String table) {
+        return slice.db()
+                .inTransaction(
+                        tx ->
+                                tx.queryOne("SELECT count(*) FROM " + table, rs -> rs.getLong(1))
+                                        .orElseThrow());
+    }
+
+    Db db() {
+        return slice.db();
     }
 
     /** A distinct client address per call keeps the per-IP auth limits out of unrelated tests. */
@@ -88,10 +212,10 @@ final class WebKit {
 
     /** Creates an ADMIN directly in the store (registration never grants roles) and logs in. */
     String admin() {
-        if (world.inTransaction(r -> r.users().findByEmail("admin@bms.test")).isPresent()) {
+        if (uow.inTransaction(r -> r.users().findByEmail("admin@bms.test")).isPresent()) {
             return login("admin@bms.test");
         }
-        world.inTransaction(
+        uow.inTransaction(
                 r ->
                         r.users()
                                 .insert(
@@ -106,7 +230,7 @@ final class WebKit {
     }
 
     long idOf(String email) {
-        return world.inTransaction(r -> r.users().findByEmail(email)).orElseThrow().id();
+        return uow.inTransaction(r -> r.users().findByEmail(email)).orElseThrow().id();
     }
 
     /**

@@ -4,10 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 class CatalogApiTest {
 
-    private final WebKit kit = new WebKit();
+    @RegisterExtension final WebKit kit = new WebKit();
 
     @Test
     void citiesAreCacheableWithAnEtag() {
@@ -143,7 +144,7 @@ class CatalogApiTest {
         String etag = before.header("ETag");
         kit.http.get("/api/shows/9/seats").header("If-None-Match", etag).expect(304);
 
-        kit.world.putHold(1, "A2");
+        kit.hold(kit.user("holder@example.com"), "A2");
         var after =
                 kit.http
                         .get("/api/shows/9/seats")
