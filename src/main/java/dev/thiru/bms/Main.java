@@ -116,8 +116,11 @@ public final class Main {
 
     /** Builds the whole application on real adapters; the caller listens and closes. */
     public static Booted app(AppConfig config, JoltConfig jolt) {
-        Path staticDir = existingDir(config.staticDir(), "STATIC_DIR");
-        Path viewsDir = existingDir(config.viewsDir(), "VIEWS_DIR");
+        // Both default to the class path; a directory overrides it (the Docker image sets them).
+        Path staticDir =
+                config.staticDir() == null ? null : existingDir(config.staticDir(), "STATIC_DIR");
+        Path viewsDir =
+                config.viewsDir() == null ? null : existingDir(config.viewsDir(), "VIEWS_DIR");
         Clock clock = Clock.systemUTC();
 
         String url = Sqlite.withPragmas(config.dbUrl());
@@ -214,9 +217,13 @@ public final class Main {
                 });
     }
 
-    // TODO(jolt#68): serve from the classpath once Jolt supports it; until then STATIC_DIR.
+    /** The UI from {@code /static} on the class path, or from STATIC_DIR when it is set. */
     private static void serveStatic(App app, Path staticDir) {
-        Static files = Static.serve("/", staticDir).spaFallback("index.html");
+        Static files =
+                (staticDir == null
+                                ? Static.classpath("/", "/static")
+                                : Static.serve("/", staticDir))
+                        .spaFallback("index.html");
         app.use(
                 (req, res, next) -> {
                     // Jolt's fallback answers any browser navigation (Accept: text/html) with

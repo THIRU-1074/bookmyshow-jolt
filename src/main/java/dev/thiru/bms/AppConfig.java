@@ -39,8 +39,6 @@ public record AppConfig(
     static final int MIN_ADMIN_PASSWORD = 12;
     static final int MAX_CHECKOUTS = 3;
     static final String DEFAULT_DB_URL = "jdbc:sqlite:data/bms.db";
-    static final String DEFAULT_STATIC_DIR = "src/main/resources/static";
-    static final String DEFAULT_VIEWS_DIR = "src/main/resources/views";
     private static final String SQLITE_PREFIX = "jdbc:sqlite:";
 
     /** The process environment and properties files, as {@code main} reads them. */
@@ -109,9 +107,15 @@ public record AppConfig(
                                 .map(String::trim)
                                 .filter(s -> !s.isEmpty())
                                 .toList(),
-                Path.of(c.string("STATIC_DIR", DEFAULT_STATIC_DIR)),
-                Path.of(c.string("VIEWS_DIR", DEFAULT_VIEWS_DIR)),
+                optionalPath(c, "STATIC_DIR"),
+                optionalPath(c, "VIEWS_DIR"),
                 "1".equals(c.string("JOLT_DEV", null)));
+    }
+
+    /** Unset means the class path: {@code /static} and {@code /views} inside the app. */
+    private static Path optionalPath(Config c, String name) {
+        String v = c.string(name, null);
+        return v == null ? null : Path.of(v);
     }
 
     public boolean seedAdmin() {
@@ -221,9 +225,9 @@ public record AppConfig(
                 + ", trustProxy="
                 + trustProxy
                 + ", staticDir="
-                + staticDir
+                + (staticDir == null ? "classpath" : staticDir)
                 + ", viewsDir="
-                + viewsDir
+                + (viewsDir == null ? "classpath" : viewsDir)
                 + ", joltDev="
                 + joltDev
                 + "]";

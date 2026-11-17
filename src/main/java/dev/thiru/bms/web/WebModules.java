@@ -56,7 +56,11 @@ public final class WebModules {
     public static void install(App app, WebDeps deps) {
         JsonMapper mapper = app.config().jsonMapper();
         WebDeps.Settings settings = deps.settings();
-        app.views(settings.viewsDir());
+        if (settings.viewsDir() == null) {
+            app.viewsClasspath("/views", null);
+        } else {
+            app.views(settings.viewsDir());
+        }
         Problems.install(app);
 
         JwtAuth jwt = JwtAuth.hs256(settings.jwtSecret());

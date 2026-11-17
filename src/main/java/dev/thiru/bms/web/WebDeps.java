@@ -52,7 +52,7 @@ public record WebDeps(
      *     (WEBHOOK_SECRET)
      * @param mockGateway enables the mock gateway pages (MOCK_GATEWAY)
      * @param viewsDir directory holding {@code ticket.html} and {@code mock-gateway.html}
-     *     (VIEWS_DIR)
+     *     (VIEWS_DIR), or {@code null} to read them from {@code /views} on the class path
      * @param sseHeartbeat interval between SSE heartbeats (15 s in production)
      */
     public record Settings(

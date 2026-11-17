@@ -70,6 +70,18 @@ class MainTest {
     }
 
     @Test
+    void aStaticDirOverridesTheClasspathUi() throws Exception {
+        Path ui = Files.createDirectories(dir.resolve("ui"));
+        Files.writeString(ui.resolve("index.html"), "<title>From STATIC_DIR</title>");
+        JoltTest http = boot("STATIC_DIR", ui.toString());
+        http.get("/").expect(200).bodyContains("From STATIC_DIR");
+        http.get("/movies/1")
+                .header("Accept", "text/html")
+                .expect(200)
+                .bodyContains("From STATIC_DIR");
+    }
+
+    @Test
     void apiPathsNeverFallBackToTheSpaEvenForBrowsers() {
         boot().get("/api/nope")
                 .header("Accept", "text/html")
