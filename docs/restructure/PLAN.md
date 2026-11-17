@@ -193,17 +193,14 @@ Every production class, its target and why. "Split" means the code is divided ac
 
 Slice lanes never edit these. They hand the integration lane a short note ("register `CatalogRoutes`, delete `CatalogModule`, `Dtos.CityDto` ...") and the integration lane applies it in one commit per slice:
 
-- `Main`, `AppConfig`, `WebModules`, `WebDeps`, `web.HttpPipeline`, `web.CatalogCache`
+- `Main`, `AppConfig`, `WebModules`, `web.HttpPipeline`, `web.CatalogCache`
 - the rest of the shared `web` kit (`Query`, `Paging`, `Principal`, `ApiException`, `Problems`, `Idempotent`): slices use it, never edit it
 - `kernel` and `ports`, except new files a brief hands to a lane (wave 2: `kernel.catalog.SeatMap`)
 - the shared test kit in `src/test/java/dev/thiru/bms/testing` (`TestDb`, `SliceKit`, `MutableClock`, `PlainHasher`, `MemoryRefreshTokens`, `FakeLive`, and since wave 3 `SequentialIds`, `RecordingGateway`, `RecordingEvents`)
 - `web.Permissions`, `web.Rbac` and `docs/RBAC.md`
-- `web.Dtos` (until it is fully split)
-- `domain.port.Repositories`, `UnitOfWork`, `adapters.db.SqlRepositories`, `SqliteUnitOfWork`
-- `application.fakes.FakeWorld`, `web.WebKit`
 - `src/main/resources/db/migrations/*` (one numbering sequence)
 - `pom.xml`, `api/openapi.yaml`, `docs/SPEC.md`
-- `ArchitectureTest`, `TargetArchitectureTest`, `RecordGeneratorTest.WEB_RECORDS`
+- `TargetArchitectureTest`, `RecordGeneratorTest.WEB_RECORDS`
 
 ## Waves
 
