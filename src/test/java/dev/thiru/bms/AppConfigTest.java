@@ -14,6 +14,8 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -102,6 +104,35 @@ class AppConfigTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> AppConfig.fromEnv(env("PUBLIC_BASE_URL", "ftp://x")));
+    }
+
+    /** The exact TRUST_PROXY that render.yaml deploys must parse, or production fails to start. */
+    @Test
+    void renderTrustProxyParses() throws Exception {
+        String yaml = Files.readString(Path.of("render.yaml"));
+        Matcher m = Pattern.compile("key: TRUST_PROXY\\s+value: (\\S+)").matcher(yaml);
+        assertTrue(m.find(), "render.yaml sets TRUST_PROXY");
+        assertEquals("10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7", m.group(1));
+        assertEquals(
+                List.of("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"),
+                AppConfig.fromEnv(env("TRUST_PROXY", m.group(1))).trustProxy());
+    }
+
+    /**
+     * A bad entry fails at config load, naming the variable. Jolt folds an IPv4-mapped literal to
+     * its four IPv4 bytes, so {@code ::ffff:10.0.0.0/104} is a 104-bit prefix on a 32-bit address:
+     * rejected, and not needed, since a mapped peer already matches {@code 10.0.0.0/8}.
+     */
+    @Test
+    void aBadTrustProxyEntryFailsNamingTheVariable() {
+        for (String bad : List.of("::ffff:10.0.0.0/104", "10.0.0.0/33", "render.com")) {
+            var e =
+                    assertThrows(
+                            IllegalArgumentException.class,
+                            () -> AppConfig.fromEnv(env("TRUST_PROXY", "10.0.0.0/8," + bad)));
+            assertTrue(e.getMessage().startsWith("TRUST_PROXY: "), e.getMessage());
+            assertTrue(e.getMessage().contains(bad), e.getMessage());
+        }
     }
 
     @Test

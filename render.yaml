@@ -19,6 +19,9 @@ services:
       - key: ADMIN_PASSWORD
         sync: false
       # Render's load balancer connects from private addresses; trust its X-Forwarded-* headers so
-      # rate limits key on the real client and HTTPS is detected (Secure cookies, HSTS).
+      # rate limits key on the real client and HTTPS is detected (Secure cookies, HSTS). Jolt folds
+      # an IPv4-mapped peer (::ffff:10.x) to IPv4, so the IPv4 blocks cover it; fc00::/7 covers an
+      # IPv6 unique-local peer. AppConfigTest parses this exact value. The first request's peer
+      # and trust decision are logged once per boot ("First request: ...").
       - key: TRUST_PROXY
-        value: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+        value: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7

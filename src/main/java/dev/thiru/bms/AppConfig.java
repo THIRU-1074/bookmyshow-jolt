@@ -3,6 +3,7 @@ package dev.thiru.bms;
 import dev.thiru.bms.kernel.booking.BookingPolicy;
 import in.jolt.Config;
 import in.jolt.ConfigException;
+import in.jolt.JoltConfig;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -105,12 +106,7 @@ public record AppConfig(
                 publicBaseUrl(c, port),
                 c.bool("MOCK_GATEWAY", true),
                 c.string("METRICS_TOKEN", null),
-                trust == null
-                        ? List.of()
-                        : Arrays.stream(trust.split(","))
-                                .map(String::trim)
-                                .filter(s -> !s.isEmpty())
-                                .toList(),
+                trustProxy(trust),
                 Path.of(c.string("STATIC_DIR", DEFAULT_STATIC_DIR)),
                 optionalPath(c, "VIEWS_DIR"),
                 "1".equals(c.string("JOLT_DEV", null)));
@@ -204,6 +200,27 @@ public record AppConfig(
             throw new IllegalArgumentException(name + " must be at least 1");
         }
         return n;
+    }
+
+    /**
+     * The TRUST_PROXY entries, checked by Jolt's own parser now so a bad entry stops startup with a
+     * message naming the variable, rather than later inside {@code Main.joltConfig}.
+     */
+    private static List<String> trustProxy(String value) {
+        if (value == null) {
+            return List.of();
+        }
+        List<String> specs =
+                Arrays.stream(value.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .toList();
+        try {
+            JoltConfig.defaults().trustProxy(specs.toArray(String[]::new));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("TRUST_PROXY: " + e.getMessage(), e);
+        }
+        return specs;
     }
 
     @Override
