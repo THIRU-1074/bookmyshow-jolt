@@ -294,7 +294,9 @@ final class WebKit {
 
         @Override
         public synchronized void release(long userId, String key) {
-            rows.remove(userId + "/" + key);
+            // As SqlIdempotency: only an unfinished claim; a stored response keeps replaying.
+            rows.computeIfPresent(
+                    userId + "/" + key, (k, row) -> row.stored() == null ? null : row);
         }
     }
 

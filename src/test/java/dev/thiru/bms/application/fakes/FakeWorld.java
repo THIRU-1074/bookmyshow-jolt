@@ -290,6 +290,10 @@ public final class FakeWorld
 
     @Override
     public void refund(String gatewayRef, long amount) {
+        // As MockPaymentGateway: a negative amount is a caller bug, not a gateway outage.
+        if (amount < 0) {
+            throw new IllegalArgumentException("refund amount must not be negative");
+        }
         if (failRefunds) {
             throw new IllegalStateException("gateway down");
         }
