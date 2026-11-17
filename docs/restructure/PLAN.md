@@ -1,6 +1,6 @@
 # ADR 0001: vertical feature slices around a thin hexagon
 
-- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade; wave 1 (kernel, ports, `ports.Db`) is merged too. Wave 2 (catalog, live and accounts slices; legacy modules deleted) is done on `feat/restructure-wave2`, see [Wave 2 record](#wave-2-record). Next: wave 3, booking, see [Wave 3 brief](#wave-3-brief-booking) and [How to build a slice](#how-to-build-a-slice).
+- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade; wave 1 (kernel, ports, `ports.Db`) is merged too. Wave 2 (catalog, live and accounts slices; legacy modules deleted) is merged; see [Wave 2 record](#wave-2-record). Wave 3 (booking slice) is done on `feat/restructure-wave3`; see [Wave 3 record](#wave-3-record). Next: wave 4, payments; see [Wave 4 brief](#wave-4-brief-payments) and [How to build a slice](#how-to-build-a-slice).
 - **Date:** 2026-11-17
 - **Supersedes:** the layer-first layering of SPEC section 10 once the last wave lands.
 
@@ -196,7 +196,7 @@ Slice lanes never edit these. They hand the integration lane a short note ("regi
 - `Main`, `AppConfig`, `WebModules`, `WebDeps`, `web.HttpPipeline`, `web.CatalogCache`
 - the rest of the shared `web` kit (`Query`, `Paging`, `Principal`, `ApiException`, `Problems`, `Idempotent`): slices use it, never edit it
 - `kernel` and `ports`, except new files a brief hands to a lane (wave 2: `kernel.catalog.SeatMap`)
-- the shared test kit in `src/test/java/dev/thiru/bms/testing` (`TestDb`, `SliceKit`, `MutableClock`, `PlainHasher`, `MemoryRefreshTokens`, `FakeLive`)
+- the shared test kit in `src/test/java/dev/thiru/bms/testing` (`TestDb`, `SliceKit`, `MutableClock`, `PlainHasher`, `MemoryRefreshTokens`, `FakeLive`, and since wave 3 `SequentialIds`, `RecordingGateway`, `RecordingEvents`)
 - `web.Permissions`, `web.Rbac` and `docs/RBAC.md`
 - `web.Dtos` (until it is fully split)
 - `domain.port.Repositories`, `UnitOfWork`, `adapters.db.SqlRepositories`, `SqliteUnitOfWork`
@@ -214,8 +214,8 @@ Each wave starts from a green `mvn -B verify` on `integration`, and ends green w
 | 0 | foundation | baseline, target rules, port contracts, schema, codegen, this plan | **done** (merged onto `integration` with v0.4.1) |
 | 1 | integration, alone | `domain` to `kernel` (package moves only); surviving port interfaces to `ports`; add `ports.Db` + `Tx.afterCommit` and `adapters.db.SqliteDb` with a `Db` contract test; replace `ArchitectureTest`'s `domain` rule with the kernel rule; `web.Money` to `kernel.Money` | **done**, see [Wave 1 record](#wave-1-record) |
 | 2 | catalog+live, accounts (parallel) | `features.catalog` (public catalog, seat map; `kernel.catalog.SeatMap`), `features.live` (SSE), `features.accounts` (auth, me, `JoltRefreshStore`) | **done**, see [Wave 2 record](#wave-2-record) |
-| 3 | booking, alone | `features.booking`: holds, bookings, checkout, cancel, ticket, `ExpireSweep`, `Outcome`, owned-booking SQL; events via `afterCommit` | `ConcurrentBuyersTest` moved and green; integration lane deletes `BookingModule`, the booking use cases, `Outcome` and `BookingQueries`; `EventBuffer` and `BookingOps` stay until waves 4 and 5, because `ProcessPaymentWebhook` and `CancelShow` use them (see [Wave 3 brief](#wave-3-brief-booking)) |
-| 4 | payments | `features.payments`: webhook, mock gateway, their booking/payment transition SQL | E2E payment journey green; `PaymentModule`, `ProcessPaymentWebhook`, `MockGatewayPayments` deleted |
+| 3 | booking, alone | `features.booking`: holds, bookings, checkout, cancel, ticket, `ExpireSweep`, `Outcome`, owned-booking SQL; events via `afterCommit` | **done**, see [Wave 3 record](#wave-3-record). `BookingModule`, `CreateHold`, `ExpireSweep` deleted; `CreateBooking`, `Checkout`, `CancelBooking`, `BookingQueries`, `Outcome` kept as test fixtures until wave 5; `EventBuffer` and `BookingOps` stay until waves 4 and 5 |
+| 4 | payments | `features.payments`: webhook, mock gateway, their booking/payment transition SQL | E2E payment journey green; `PaymentModule`, `ProcessPaymentWebhook`, `MockGatewayPayments` deleted (see [Wave 4 brief](#wave-4-brief-payments)) |
 | 5 | admin | `features.admin`: catalog writes, reports, stats, users and roles, owner links, show cancel, `CinemaScope` lookup | `OwnerApiTest`, `AdminApiTest`, `AdminUsersApiTest` moved and green; `AdminModule`, `OwnerModule`, admin use cases deleted |
 | 6 | integration | delete `Repositories`, `UnitOfWork`, repository interfaces, `SqlRepositories`, `SqlCatalog/Bookings/Admin/SeatLocks`, `FakeWorld`, `WebDeps`, the rest of `Dtos`, `ArchitectureTest`; generation moves to `generate-sources`; SPEC 10 drops "in migration"; re-measure BASELINE | `src/main/java` has only root, `kernel`, `ports`, `adapters`, `web`, `features` |
 
@@ -312,6 +312,68 @@ Per package, from step 0 to wave 2:
 | `6fc31aa` | `SeatMap` | 2 |
 
 At baseline, the owner feature touched 14 directories in 4 commits.
+
+## Wave 3 record
+
+Done on `feat/restructure-wave3`, from `integration` at `170dc99`, the wave 2 merge.
+
+- `feat/slice-booking` was merged with `--no-ff` (`90b80c4`). It holds 5 commits: the slice, the three test fakes, the brief's constructor order, the ported `BookingQueries` cases with the sweep racing the buyers, and the hand-back `docs/restructure/handback-booking.md`.
+- Step 3 was then applied with **option (a)**, decided by the main session (`28e62c5`).
+- `SliceKit` gained the port fakes (`79a4cac`).
+
+There was no schema edit. These are green: `ApiSchemaTest`, both `EndToEndTest` journeys, `RbacTest`, `RbacMatrixTest`, `RecordGeneratorTest`, `ProcessPaymentWebhookTest`, `CancelShowTest`, the architecture tests and every contract suite. **616 tests** (567 after wave 2).
+
+**Step 3** (`28e62c5`):
+
+- `WebModules.routes` mounts `BookingRoutes(deps.db(), deps.publisher(), deps.ids(), deps.clock(), deps.policy(), deps.gateway(), idempotent, pipeline.holdLimit())`, and the `BookingQueries bookings` line is gone.
+- `Main` schedules `features.booking.ExpireSweep` on `sliceDb`, with `live` as the events port.
+- `WEB_RECORDS` points `Hold`, `ShowInfo`, `BookingSeat`, `Booking`, `Checkout`, `HoldRequest` and `BookingRequest` at `features.booking.BookingDtos` (replace).
+- **Deleted:** `web.BookingModule` (181 lines), `application.CreateHold` (110), `application.ExpireSweep` (61) and the `Dtos` booking block (71: `HoldDto`, `ShowInfoDto`, `BookingSeatDto`, `BookingDto`, `CheckoutDto`).
+- **Deleted tests:** `application.CreateHoldTest` (153), `application.ExpireSweepTest` (96) and `adapters.db.ConcurrentBuyersTest` (171). Their cases are in `features.booking`. The race now runs on `SqliteDb`, with the sweep running alongside the 200 buyers.
+- **Kept as test fixtures until wave 5**, each with a Javadoc note: `CreateBooking`, `Checkout`, `CancelBooking`, `BookingQueries` and `Outcome`, with their own tests. The brief's full deletion list was tried on a scratch merge first: main code compiled, but `AdminReportsAndQueriesTest` (24 errors), `CancelShowTest` (16) and `ProcessPaymentWebhookTest` (6) use these classes to build their state.
+- `EventBuffer` and `BookingOps` stay for `ProcessPaymentWebhook` (wave 4) and `CancelShow` (wave 5).
+
+**`SliceKit` fakes** (`79a4cac`): `ids()`, `gateway()` and `events()` return one `SequentialIds`, `RecordingGateway` and `RecordingEvents` per kit. Each fake is held to its contract suite (`IdGeneratorContract`, `PaymentGatewayContract`, `SeatEventPublisherContract`). `BookingRoutesTest` takes them from the kit, and the existing kit behaviour is unchanged.
+
+**Equivalence.** Before step 3, legacy `BookingModule` and `BookingRoutes` ran the same 121-request script on identical V2 databases. There were 0 differences in status, body (with `requestId` normalised) and headers. The 63 seat events were identical, the refunds identical, and the final rows identical. See the hand-back, section 4.
+
+**Smoke test.** The packaged app (`java -cp "target/lib/*;target/bookmyshow-jolt-*.jar"`) ran with `STATIC_DIR` unset, `PORT=18098`, a temp DB, the admin env vars, `MOCK_GATEWAY=true` and `TRUST_PROXY=127.0.0.1`, after `npm run build` in `web/`. Results:
+
+- index 200 (`Houselights`), health `UP`
+- register 201, login
+- hold 201 (server price 66000), and its replay 201 with `Idempotency-Replayed: true` and the same body
+- booking 201 `HELD`, checkout 201 (mock gateway URL)
+- pay through `/mock-gateway/:id/complete` 303, then the booking `CONFIRMED`
+- ticket 200 `text/html` with the seats and `INR 660.00`
+- a second booking three days out, paid, then cancelled: 200 `REFUNDED` with a full refund (18000 of 18000)
+- admin stats 200
+- owner cinemas as an audience member: 403
+
+**Deleted in wave 3:** 423 main lines (3 classes and 5 `Dtos` records) and 420 test lines (3 test classes).
+
+**Size** (`src/main/java` and `src/test/java`, files / lines):
+
+| | Baseline (`0893749`) | Wave 2 | Wave 3 |
+|---|---:|---:|---:|
+| main | 111 / 10 295 | 118 / 11 222 | 126 / 12 241 |
+| test | 58 / 9 821 | 105 / 16 029 | 117 / 17 445 |
+| tests run | 356 | 567 | 616 |
+
+Per package, from wave 2 to wave 3:
+
+| Package | Wave 2 (files / lines) | Wave 3 (files / lines) |
+|---|---:|---:|
+| `application` | 17 / 1 468 | 15 / 1 323 |
+| `web` | 18 / 2 357 | 17 / 2 088 |
+| `features` | 11 / 1 576 | 22 / 3 009 (`booking` 1 433) |
+| test `testing` | 11 files | 17 / 1 031 (3 fakes and 3 contract tests) |
+
+`kernel` (1 380), `ports` (217), `adapters.db` (2 740) and `domain.port` (386) are unchanged. Main code grew by 1 019 lines. That is mostly `BookingSql` (608), which duplicates the parts of `SqlBookings` and `SqlSeatLocks` that payments and admin still use until wave 6, plus the five fixture use cases (about 340 lines) that wave 5 deletes.
+
+**Open items for wave 4:**
+
+1. **Gateway calls inside the IMMEDIATE transaction.** `Checkout` calls `PaymentGateway.createSession`, and `CancelBooking` calls `refund`, inside `BEGIN IMMEDIATE`. So do the webhook's full refund and `CancelShow`. This keeps "a failed refund rolls the cancel back", but a slow real gateway would hold SQLite's only writer lock for the length of an HTTP call. Wave 4 must either accept this for the mock gateway, recording the decision here, or design an outbox: commit the state change with a pending refund, call the gateway after commit, and settle it in a second transaction. Nothing changes behaviour until a real gateway is planned.
+2. **No contract covers a refund failure.** `PaymentGatewayContract` checks sessions and negative amounts, but not that a failing refund throws. The booking slice's cancel rollback, the webhook's late-success refund and `CancelShow` all depend on that. `MockPaymentGateway` never fails, so only `RecordingGateway.failRefunds` exercises it. Wave 4 should add the rule to the contract, with a way for each implementation to be made to fail, or record why the mock is exempt.
 
 ## Wave 2 briefs
 
@@ -493,6 +555,8 @@ The integration lane applies the lane's note, deletes the listed classes and `Dt
 
 ## Wave 3 brief: booking
 
+**Done**, see [Wave 3 record](#wave-3-record). Kept for reference.
+
 One lane, **booking** (`feat/slice-booking`), runs after a short **step 0** by the integration lane. Read [How to build a slice](#how-to-build-a-slice) first. Everything there holds, with booking in place of catalog.
 
 ### Step 0: integration lane
@@ -575,6 +639,91 @@ One lane, **booking** (`feat/slice-booking`), runs after a short **step 0** by t
 - `DbContract`, `LiveSeatsContract`, and the contracts named in step 0
 
 No `Permissions` or `RBAC.md` change.
+
+## Wave 4 brief: payments
+
+One lane, **payments** (`feat/slice-payments`), branched from `integration` after wave 3 has merged, following a short **step 0** by the integration lane. Read [How to build a slice](#how-to-build-a-slice) first. Wave 5 (admin) may run in parallel. It owns `CancelShow`, `CancelShowTest` and `AdminReportsAndQueriesTest`, so this lane edits none of them.
+
+### Step 0: integration lane
+
+- **`ports.GatewayCallback`.** It replaces `MockGatewayPayments.Sender`. Ports never import a slice, so the event record moves into the port: `GatewayCallback.Event(String eventId, String type, String paymentId, String gatewayRef, long amount, String currency, Instant occurredAt)`, where `type` is the wire string `payment.succeeded` or `payment.failed`. The method is `int send(Event event) throws Exception`.
+- `adapters.payment.MockGatewaySender` implements `GatewayCallback` and maps the event onto `MockGatewayClient.Event` as it does today.
+- `WebDeps.mockSender` becomes a `GatewayCallback`.
+- Until step 3 deletes `MockGatewayPayments`, keep a one-line bridge to its `Sender`, so the legacy module keeps compiling.
+- **`GatewayCallbackContract`.** A 2xx status comes back as is, and a failed delivery throws. Hold `MockGatewaySender` to it against a `JoltTest` or a local stub, and add a recording fake under `testing`, exposed as `SliceKit.callbacks()` and held to the same contract.
+- Settle the two open items in the [Wave 3 record](#wave-3-record) here or in the lane, and record the outcome in this file.
+
+### Lane: payments (`feat/slice-payments`)
+
+**Owns** (new files only), under `src/main/java/dev/thiru/bms/features/payments/`:
+
+- **`PaymentRoutes`**, a `RouteModule` with these routes:
+  - `POST /api/payments/webhook`, behind the signature middleware passed in. That is today's `Webhooks.hmacSha256(...)` chain, which `WebModules` keeps building with `WEBHOOK_TOLERANCE`.
+  - `GET /mock-gateway/:id` (the `mock-gateway` view) and `POST /mock-gateway/:id/complete` (form or JSON `outcome`, then a 303 to `/bookings/<id>`). These are registered only when the mock gateway is on, as `PaymentModule` does when given a null mock.
+
+  The constructor takes its ports: `PaymentRoutes(Db db, PaymentGateway gateway, SeatEvents events, Ids ids, Clock clock, Middleware signature, GatewayCallback mockSender /* null when MOCK_GATEWAY is off */, JsonMapper mapper)`.
+- **`ProcessWebhook`**, ported from `ProcessPaymentWebhook`, keeping its kinds (`PROCESSED`, `DUPLICATE`, `AMOUNT_MISMATCH`) and its JSON:
+  - First, `INSERT OR IGNORE INTO payment_event`. A duplicate gives 200 `{duplicate: true}`.
+  - Load the payment (404 `Payment` if missing) and the booking.
+  - Re-check expiry on an open booking. If it has expired, expire it, delete its locks and queue `Released(EXPIRED)`.
+  - **Mismatch or failure:** if the payment is `INITIATED`, mark it `FAILED`. A `PAYMENT_PENDING` booking returns to `HELD` (`paymentFailed`).
+  - **Success:** if the payment is `INITIATED` and the booking is `PAYMENT_PENDING`, check that the booking owns all its locks (`seat_lock` rows with `booking_id = booking.id` equal its `booking_seat` seats). If so:
+    - `paymentSucceeded`
+    - `UPDATE seat_lock SET state = 'BOOKED', expires_at = NULL WHERE hold_id = ?`
+    - payment `SUCCEEDED`
+    - queue `Booked(showId, seats in booking_seat rowid order)`
+
+    If the booking does not own all its locks, expire it. When the booking is expired, cancelled or refunded, refund in full through the gateway and mark the payment `REFUNDED`.
+- **`MockGateway`**, ported from `MockGatewayPayments`: `find(paymentId)` for the page (amount through `kernel.Money`), and `complete(paymentId, success)`. The latter builds a `GatewayCallback.Event` with a fresh id from `Ids` and sends it. A non-2xx status or an exception becomes an `IllegalStateException`, as today.
+- **`PaymentSql`.** Copy what you need from `features.booking.BookingSql` and from `SqlBookings.Payments/PaymentEvents`; never import the booking slice:
+  - payment by id; payment update (404 `Payment` if no row)
+  - the booking with its seats (`ORDER BY rowid`)
+  - the versioned booking update, `WHERE id = ? AND version = ?`, re-read and retried once, then `VERSION_CONFLICT`
+  - `seat_lock` by hold, mark booked, and delete by hold (seats sorted)
+- **Local copies** of `BookingOps.apply` and `expire`, and the records `WebhookBody` and `CompleteRequest`, copied component for component from `PaymentModule`.
+- **Seat events** only through `Tx.afterCommit`.
+
+**Tests**, under `src/test/java/dev/thiru/bms/features/payments/**`, on `TestDb` and `SliceKit` (V2 seed, dates from `kit.seedDate()`, fakes from `kit.ids()`, `kit.gateway()`, `kit.events()`):
+
+- Port `ProcessPaymentWebhookTest`. Reach `PAYMENT_PENDING` with SQL, or by mounting `features.booking.BookingRoutes` beside `PaymentRoutes` in the test kit. Tests may combine slices; main code may not.
+- Move `BookingApiTest`'s payment cases:
+  - `webhookRejectsBadSignaturesAndMismatchedAmounts`
+  - `mockGatewayPageAndCompletion`
+  - `mockGatewayIsAbsentWhenDisabled`
+  - the webhook steps of `fullFlowFromHoldToTicketAndCancel`: success, duplicate replay, then the ticket
+  - the payment-failed loop of `expiredHoldGives410AndTooManyCheckoutsGive429`
+
+  Copy `WebKit.sign` and `signedWebhook` for the signed calls. The booking halves of these cases are already in `features.booking.BookingRoutesTest`.
+- Copy `AdminReportsAndQueriesTest.mockGatewayDeliversAnEventAndReturnsTheBooking` into the slice. Its deletion goes to the integration lane, because wave 5 owns the file.
+- A race on `TestDb` with virtual threads: a success webhook against the sweep expiring the same booking. The result must be exactly one of `CONFIRMED`, or `EXPIRED` with a full refund, and never a seat booked twice.
+
+**Preserve exactly:**
+
+- 401 `UNAUTHENTICATED` for a forged or missing signature, a tampered body, or a timestamp more than 300 s off. A timestamp exactly 300 s off reaches validation.
+- 422 with `errors.type` for an unknown type, and `VALIDATION` for an amount mismatch, with the booking left `HELD`.
+- 200 `{status}` for a processed event and `{duplicate: true}` for a replay.
+- The mock gateway page: HTML, `INR` amount, the form action and a CSP header.
+- Completion: the 303 `Location`, a 422 for a bad outcome, a 403 for a cross-site cookie post (pipeline guards), and a 404 for an unknown payment.
+- The mock routes return 404 when `MOCK_GATEWAY` is off.
+- Events: `seat-booked` after `CONFIRMED`; `seat-released` (`EXPIRED`) when a late webhook finds the booking expired. `EndToEndTest` waits for `event: seat-booked`.
+
+**Hands back** (step 3):
+
+- In `WebModules.routes`, replace the `MockGatewayPayments mock = ...` statement and the `PaymentModule` block with one `pipeline.module(new PaymentRoutes(...))`. `deps.mockSender()` is passed only when `settings.mockGateway()` is on, otherwise `null`.
+- **Delete:**
+  - `web.PaymentModule`, `application.ProcessPaymentWebhook`, `application.MockGatewayPayments` (and the step 0 bridge)
+  - `ProcessPaymentWebhookTest`
+  - `web.BookingApiTest`, whole: its booking cases live in `BookingRoutesTest`, its payment cases in the slice
+  - the case `AdminReportsAndQueriesTest.mockGatewayDeliversAnEventAndReturnsTheBooking`
+- **`WEB_RECORDS`:** point `WebhookEvent` and `CompleteRequest` at the slice records (replace).
+- **Fixture classes:** wave 4 can delete none of the wave 3 fixtures.
+  - `CreateBooking` and `Checkout` lose their `ProcessPaymentWebhookTest` user, but `CancelShowTest` and `AdminReportsAndQueriesTest` still build state with them.
+  - `CancelBooking`, `BookingQueries` and `Outcome` stay for `AdminReportsAndQueriesTest`.
+  - `EventBuffer` and `BookingOps` stay for `CancelShow`.
+  - Wave 5 deletes all seven once `CancelShow` and those two tests move. Step 3 updates the fixture notes on `CreateBooking` and `Checkout` to name only wave 5.
+- **Swap proof:** with the swap applied and the legacy classes still in place, these stay green: both `EndToEndTest` journeys (the payment journey goes over a real socket through `MockGatewaySender`), `RbacTest`, `ApiSchemaTest`, `MainTest`, `AdminApiTest` and `OwnerApiTest`. Also run a legacy-vs-slice equivalence script for the webhook and mock gateway routes, as wave 3 did.
+
+**Must stay green:** `RbacTest`, `RbacMatrixTest`, `ApiSchemaTest` (no schema edit), `ApiCoverageTest`, `RecordGeneratorTest`, `EndToEndTest`, `MainTest`, `CancelShowTest`, `AdminReportsAndQueriesTest`, `TargetArchitectureTest`, `ArchitectureTest`, `DbContract`, `PaymentGatewayContract`, `SeatEventPublisherContract` and `GatewayCallbackContract`. No `Permissions` or `RBAC.md` change.
 
 ## Instructions for a slice lane
 
