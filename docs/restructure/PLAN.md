@@ -1,6 +1,6 @@
 # ADR 0001: vertical feature slices around a thin hexagon
 
-- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade; wave 1 (kernel, ports, `ports.Db`) is merged too. Wave 2 (catalog, live and accounts slices; legacy modules deleted) is merged; see [Wave 2 record](#wave-2-record). Wave 3 (booking slice) is merged; see [Wave 3 record](#wave-3-record). Wave 5 (admin and owner slice) is done on `feat/restructure-wave5`; see [Wave 5 record](#wave-5-record). In progress: wave 4, payments; see [Wave 4 brief](#wave-4-brief-payments) and [How to build a slice](#how-to-build-a-slice).
+- **Status:** accepted (user-approved), **done**: wave 6 retired the legacy layer, see [Restructure result](#restructure-result). History: Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade; wave 1 (kernel, ports, `ports.Db`) is merged too. Wave 2 (catalog, live and accounts slices; legacy modules deleted) is merged; see [Wave 2 record](#wave-2-record). Wave 3 (booking slice) is merged; see [Wave 3 record](#wave-3-record). Wave 5 (admin and owner slice) is done on `feat/restructure-wave5`; see [Wave 5 record](#wave-5-record). Wave 4 (payments) and wave 6 (legacy removal, codegen) are done too; see [Wave 4 record](#wave-4-record) and [Restructure result](#restructure-result), and [How to build a slice](#how-to-build-a-slice) for the pattern.
 - **Date:** 2026-11-17
 - **Supersedes:** the layer-first layering of SPEC section 10 once the last wave lands.
 
@@ -43,8 +43,7 @@ Further decisions:
 
 | Guard | Added | Catches |
 |---|---|---|
-| `TargetArchitectureTest` + `src/test/resources/arch-fixtures` | wave 0 | a slice importing another slice or an adapter, an impure kernel, a port leaking Jolt, wiring outside `Main` |
-| `ArchitectureTest` (legacy) | before | layer rules for code not moved yet; retired in wave 6 |
+| `TargetArchitectureTest` + `src/test/resources/arch-fixtures` | wave 0, the only architecture guard since wave 6 | a slice importing another slice, an adapter or anything off its list, an impure kernel, a port leaking Jolt, an adapter importing web or a feature, web naming a slice outside `WebModules`, wiring outside `Main`, slice SQL with no test on SQLite |
 | port contracts, `dev.thiru.bms.contract` | wave 0 | a fake and its adapter disagreeing (seven real mismatches fixed in the fakes, see below) |
 | `RbacMatrixTest` | before | a route without a permission rule, or RBAC.md drifting |
 | `ApiCoverageTest` | wave 0 | `openapi.yaml` missing a route or disagreeing with RBAC.md on access |
@@ -213,7 +212,7 @@ Each wave starts from a green `mvn -B verify` on `integration`, and ends green w
 | 3 | booking, alone | `features.booking`: holds, bookings, checkout, cancel, ticket, `ExpireSweep`, `Outcome`, owned-booking SQL; events via `afterCommit` | **done**, see [Wave 3 record](#wave-3-record). `BookingModule`, `CreateHold`, `ExpireSweep` deleted; `CreateBooking`, `Checkout`, `CancelBooking`, `BookingQueries`, `Outcome` kept as test fixtures until wave 5; `EventBuffer` and `BookingOps` stay until waves 4 and 5 |
 | 4 | payments | `features.payments`: webhook, mock gateway, their booking/payment transition SQL | **done**, see [Wave 4 record](#wave-4-record). `PaymentModule`, `ProcessPaymentWebhook`, `MockGatewayPayments` and the last `application` fixtures deleted; `application` holds only `package-info` |
 | 5 | admin | `features.admin`: catalog writes, reports, stats, users and roles, owner links, show cancel, `CinemaScope` lookup | **done**, see [Wave 5 record](#wave-5-record) (ran before wave 4; `application.CancelShow` stays as a wave 4 test fixture) |
-| 6 | two lanes, then integration | see [Wave 6 brief](#wave-6-brief-retire-the-legacy-layer): delete the repository layer, `FakeWorld`, `WebKit`, `WebDeps`, `ArchitectureTest` and `application`; codegen in `generate-sources`, with slices on the generated records; SPEC 10 done; re-measure BASELINE | `src/main/java` has only root, `kernel`, `ports`, `adapters`, `web`, `features` |
+| 6 | two lanes, then integration | see [Wave 6 brief](#wave-6-brief-retire-the-legacy-layer): delete the repository layer, `FakeWorld`, `WebKit`, `WebDeps`, `ArchitectureTest` and `application`; codegen in `generate-sources`, with slices on the generated records; SPEC 10 done; re-measure BASELINE | **done**, see [Restructure result](#restructure-result). `src/main/java` has only root, `kernel`, `ports`, `adapters`, `web`, `features` |
 
 Wave order reasoning: read-only slices first (no shared writes, lowest risk, proves the pattern and `ports.Db`); booking before payments because payments reuses booking's transitions; admin last because it touches the most tables and depends on every earlier slice's SQL being settled.
 
@@ -550,6 +549,92 @@ Per package, from wave 3 to wave 5:
   - delete `Repositories`, `UnitOfWork`, the `domain.port` interfaces including `AdminRepositories`, `SqlRepositories`, `SqlCatalog/Bookings/Admin/SeatLocks`, their repository tests and `RepositoriesContract`, `FakeWorld`, `WebKit` (the legacy web tests that remain move to `SliceKit` first), `WebDeps` and `ArchitectureTest`
   - move generation to `generate-sources`
   - re-measure BASELINE
+
+## Restructure result
+
+Wave 6 integrated on `feat/restructure-wave6`: lane L (`feat/restructure-wave6-legacy`, 7 commits) and lane G (`feat/restructure-wave6-codegen`, 6 commits) merged with `--no-ff` onto `integration` at `18f5302`. Neither merge conflicted: the lanes owned disjoint files, as briefed. Two follow-up commits: the explicit `api.generated` permission in `TargetLayout.FEATURE_IMPORTS`, and the last stale mentions (README layout, JOLT_GAPS, five javadocs or comments, the `WEB_RECORDS` decision above).
+
+No schema edit. All guards are green: `ApiSchemaTest`, both `EndToEndTest` journeys, `RbacMatrixTest`, `ApiCoverageTest`, `RecordGeneratorTest`, `TargetArchitectureTest`, every contract suite. The web job passes too: `npm ci`, `lint` (0 warnings), `test` (40), `build`, and `npm run gen:api` leaves `web/src/api/schema.d.ts` unchanged.
+
+**The guard that replaced the repository contract on SQLite.** `TargetArchitectureTest.everySliceClassThatRunsSqlIsTestedOnSqlite` fails when a slice class that opens a transaction is named by no test of its slice that runs on `TestDb` or `SliceKit`. That is the class of bug behind `catalogWrites()` shipping as `UnsupportedOperationException`: the use cases were tested only on a fake. The fake is gone, so the bug cannot be written the same way again.
+
+### Size
+
+Same commands as [BASELINE.md](BASELINE.md), run on `feat/restructure-wave6` after the integration commits. `src/main/java` and `src/test/java` only.
+
+| | Baseline (`0893749`) files / lines | Result files / lines | Change (lines) |
+|---|---:|---:|---:|
+| `src/main/java` | 111 / 10 295 | 108 / 10 313 | +18 |
+| `src/test/java` | 58 / 9 821 | 106 / 14 776 | +4 955 (+50%) |
+| `src/build/java` (record generator, not shipped) | n/a | 2 / 517 | +517 |
+| generated records (`target/generated-sources/openapi`) | n/a | 59 / 584 | not in the repo |
+
+Main, per package:
+
+| Package (`dev.thiru.bms.`) | Baseline | Result |
+|---|---:|---:|
+| (root: `Main`, `AppConfig`, `ProxyDiagnostics`) | 2 / 572 | 3 / 658 |
+| `domain`, `domain.port`, `application` | 60 / 3 721 | gone |
+| `kernel` (4 sub-packages) | n/a | 29 / 1 429 |
+| `ports` | n/a | 10 / 251 |
+| `features` (`accounts` 418, `admin` 1 980, `booking` 1 383, `catalog` 779, `live` 278, `payments` 607) | n/a | 35 / 5 445 |
+| `web` | 23 / 2 821 | 12 / 1 111 |
+| `adapters.db` | 13 / 2 572 | 8 / 988 |
+| `adapters.payment` | 6 / 291 | 5 / 206 |
+| `adapters.live` | 3 / 270 | 2 / 177 |
+| `adapters.auth`, `adapters.ids` | 4 / 48 | 4 / 48 |
+
+Test, per package:
+
+| Package (`dev.thiru.bms.`) | Baseline | Result |
+|---|---:|---:|
+| (root: E2E, Main, AppConfig, schema, architecture) | 4 / 976 | 7 / 2 405 |
+| `domain` | 8 / 950 | `kernel` 12 / 1 240 |
+| `application`, `application.fakes` | 14 / 2 848 | gone |
+| `features` | n/a | 28 / 6 358 |
+| `web` | 12 / 2 117 | 7 / 978 |
+| `adapters.db` | 13 / 2 328 | 10 / 969 |
+| `adapters.payment`, `live`, `auth`, `ids` | 7 / 602 | 12 / 556 |
+| `contract`, `testing`, `api` | n/a | 30 / 2 270 |
+
+Largest files: `ApiSchemaTest` 726, `BookingSql` 608, `CatalogSql` 603, `EndToEndTest` 599, `AdminRoutesTest` 537, `BookingRoutesTest` 520. At baseline: `FakeWorld` 1 016, `EndToEndTest` 598, `SqlBookings` 492, `SqlAdmin` 490, `Dtos` 485, `SqlCatalog` 480, `AdminModule` 405.
+
+### Tests and build time
+
+| Metric | Baseline | Result |
+|---|---:|---:|
+| Tests run by `mvn -B verify` | 356 | 505 |
+| `@Test`/`@ParameterizedTest` methods in source | 343 | 460 |
+| `mvn -B verify` wall time (incl. spotless, jacoco, codegen) | 35 s (Maven 31.8 s) | 38 s (Maven 36.4 s) |
+
+The two wall times are not like for like: the baseline ran with `-Xmx448m`, the result with the lean settings the parallel lanes needed (`MAVEN_OPTS=-Xmx256m`, `JAVA_TOOL_OPTIONS=-Xmx320m -XX:+UseSerialGC -XX:TieredStopAtLevel=1`, which also makes the JIT slower). Treat "+3 s" as "about the same, not faster".
+
+### What a feature costs now
+
+BASELINE measured finished commits. Wave 6 measured two concrete changes instead, made on scratch branches off the result, each run through the full `mvn -B verify` (505 tests green, `ApiSchemaTest` included) and then discarded.
+
+| Change | Files | Dirs | What was touched |
+|---|---:|---:|---|
+| add `endsAt` to a show listing slot, end to end | 5 | 4 | `api/openapi.yaml`; `features/catalog/CatalogSql` (select and mapping); two catalog tests; regenerated `web/src/api/schema.d.ts` |
+| add a `screenName` column to the owner and admin show report | 6 | 4 | `api/openapi.yaml` (two schemas); `AdminReports` and `AdminDtos` in `features/admin`; two tests; regenerated `schema.d.ts` |
+
+In both, no wire record was written by hand (the generated `Slot` and `ShowReport` change with the schema), nothing in `kernel`, `ports`, `web`, `Main`, `Permissions` or a test kit moved, and the only code directory touched is the slice. The four directories are the schema, the slice and its tests, and the generated TypeScript types. BASELINE's numbers (13 files in 10 directories for the role rename, 39 in 14 for the owner feature) were commits that crossed every layer, so these two are smaller features and the comparison is indicative, not like for like. The part that is comparable is where the changes land: at baseline the hot spots `Repositories`, `FakeWorld`, `Dtos`, `Permissions` and `WebModules` were edited by every lane; now a field change touches none of them.
+
+### What got better
+
+- **One directory per feature.** A slice owns its routes, use cases, SQL, records mapping and tests; slices cannot import each other, an adapter or a legacy layer, and the build says so.
+- **The fake that hid bugs is gone.** `FakeWorld` (1 016 lines) and the per-entity repository layer (about 2 100 lines of adapter code and 560 of ports) are deleted, and slice tests run on migrated SQLite, so the SQL in production is the SQL under test.
+- **Wire types cannot drift.** The 59 response and request records come from `api/openapi.yaml` on every build, the TypeScript types are generated and checked in CI, and `RecordGeneratorTest` rejects a hand-written copy.
+- **A single architecture guard** with a fixture for each rule, and `web` shrank from 2 821 to 1 111 lines.
+- **The flaky migration** (wave 4) now reports its real cause.
+
+### What got worse
+
+- **More code and more tests, not less.** Main is flat (+18 lines) while test code grew 50% and the test count rose from 356 to 505. The restructure was not meant to shorten the code, and it did not; the test growth is real coverage (slice tests on SQLite, six contract suites, the architecture fixtures), but it is also more to maintain.
+- **Duplicated SQL by design.** Booking and payments each carry their own `BookingOps` and admin's `CancelShow` has a third copy of the versioned booking update with one retry, and read SQL is repeated across slices. The three copies are kept in step by hand, with the `kernel.booking.Booking` rules and the `version` column as the only shared truth.
+- **Slightly slower verify** (about +3 s, see the caveat above) and more build machinery: a 517-line generator in `src/build/java`, an extra compiler execution at `initialize`, and a Docker Maven stage that now needs `api/openapi.yaml` (the Dockerfile stage was simulated: package, `copy-dependencies`, the jar holds the 59 records and neither the generator nor the YAML library).
+- **The two largest main files are still SQL** (`BookingSql` 608, `CatalogSql` 603), and `EndToEndTest` and `ApiSchemaTest` are the biggest tests. Splitting them was not in scope.
+- **File count rose** from 169 to 216 (main plus test), because slices have more, smaller files than the layers had.
 
 ## Wave 2 briefs
 

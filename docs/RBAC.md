@@ -98,5 +98,5 @@ Columns are the role sets accounts actually hold: `AUDIENCE` alone, `AUDIENCE` +
 ## Adding a route
 
 1. Add a row to `web.Permissions.TABLE` (pick the narrowest access level).
-2. Register the handler in a `RouteModule`; for owner-scoped resources pass `Principal.of(req).userId()` to the use case and let it return NOT_FOUND for strangers; for cinema-scoped resources pass `CinemaScope.forCaller(principal.userId(), principal.isAdmin())`.
+2. Register the handler in the slice's `RouteModule`, mounted in `WebModules.routes`; for owner-scoped resources pass `Principal.of(req).userId()` to the use case and let it return NOT_FOUND for strangers; for cinema-scoped resources pass `CinemaScope.forCaller(principal.userId(), principal.isAdmin())`.
 3. Add the row to the matrix above. `RbacMatrixTest` and `RbacTest` fail until all three agree and the role checks hold.
