@@ -6,7 +6,6 @@ import dev.thiru.bms.adapters.db.SqlIdempotency;
 import dev.thiru.bms.adapters.db.SqlRefreshTokens;
 import dev.thiru.bms.adapters.db.Sqlite;
 import dev.thiru.bms.adapters.db.SqliteDb;
-import dev.thiru.bms.adapters.db.SqliteUnitOfWork;
 import dev.thiru.bms.adapters.ids.SecureIds;
 import dev.thiru.bms.adapters.live.LiveSeatHub;
 import dev.thiru.bms.adapters.payment.MockGatewayClient;
@@ -15,7 +14,6 @@ import dev.thiru.bms.adapters.payment.MockPaymentGateway;
 import dev.thiru.bms.adapters.payment.WebhookSigner;
 import dev.thiru.bms.features.accounts.Accounts;
 import dev.thiru.bms.features.booking.ExpireSweep;
-import dev.thiru.bms.web.WebDeps;
 import dev.thiru.bms.web.WebModules;
 import in.jolt.App;
 import in.jolt.HttpException;
@@ -131,8 +129,7 @@ public final class Main {
         LOG.log(Level.INFO, "Migrations applied: " + applied);
         Db db = Sqlite.open(url, DB_POOL, Duration.ofSeconds(10));
         try {
-            SqliteUnitOfWork uow = new SqliteUnitOfWork(db);
-            // The same pool behind ports.Db for the feature slices; one BEGIN IMMEDIATE per call.
+            // The pool behind ports.Db for the feature slices; one BEGIN IMMEDIATE per call.
             SqliteDb sliceDb = new SqliteDb(db);
             Pbkdf2PasswordHasher hasher = new Pbkdf2PasswordHasher();
             if (config.seedAdmin()) {
@@ -149,9 +146,8 @@ public final class Main {
             WebhookSigner signer = new WebhookSigner(config.webhookSecret());
             URI webhook = URI.create(config.publicBaseUrl() + "/api/payments/webhook");
             HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-            WebDeps deps =
-                    new WebDeps(
-                            uow,
+            WebModules.Ports ports =
+                    new WebModules.Ports(
                             sliceDb,
                             clock,
                             config.policy(),
@@ -164,13 +160,14 @@ public final class Main {
                             new MockGatewaySender(
                                     new MockGatewayClient(http, signer, clock, webhook)),
                             live,
-                            () -> dbUp(db),
-                            new WebDeps.Settings(
-                                    config.jwtSecret(),
-                                    config.webhookSecret(),
-                                    config.mockGateway(),
-                                    viewsDir,
-                                    SSE_HEARTBEAT));
+                            () -> dbUp(db));
+            WebModules.Settings settings =
+                    new WebModules.Settings(
+                            config.jwtSecret(),
+                            config.webhookSecret(),
+                            config.mockGateway(),
+                            viewsDir,
+                            SSE_HEARTBEAT);
 
             App app = Jolt.create(joltConfig(config, jolt));
             LOG.log(Level.INFO, ProxyDiagnostics.describe(app.config().trustedProxies()));
@@ -181,7 +178,7 @@ public final class Main {
             live.metrics(app.metrics());
             scheduleSweep(app, config, clock, sliceDb, live, refreshTokens, idempotency);
             // Registers the SPEC 9 middleware chain first, then every API route.
-            WebModules.install(app, deps);
+            WebModules.install(app, ports, settings);
             if (config.metricsToken() != null) {
                 app.exposeMetrics(bearer(config.metricsToken()));
             }

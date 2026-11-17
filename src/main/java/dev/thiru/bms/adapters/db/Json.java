@@ -6,8 +6,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal JSON reader and writer for the few JSON columns (layout, prices, hold seats). Kept
- * private to this adapter because the domain must stay JDK-only and Jolt's mapper is internal.
+ * Minimal JSON reader and writer for the JSON columns this package owns (the stored response
+ * headers of an idempotency key). Kept private to this adapter: the slices write their own JSON
+ * columns.
  *
  * <p>Objects read as {@code Map<String,Object>}, arrays as {@code List<Object>}, integers as {@code
  * Long}.
@@ -29,11 +30,6 @@ final class Json {
             throw p.fail("trailing content");
         }
         return v;
-    }
-
-    @SuppressWarnings("unchecked")
-    static Map<String, Object> object(Object o) {
-        return (Map<String, Object>) o;
     }
 
     @SuppressWarnings("unchecked")

@@ -5,25 +5,39 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * The dependency rules of the target layout (docs/restructure/PLAN.md): vertical slices under
- * {@code features.<slice>}, a pure {@code kernel}, I/O seams in {@code ports}, one adapter per port
- * and {@code Main} as the only composition root.
+ * The dependency rules of the layout (SPEC section 10, docs/restructure/PLAN.md): vertical slices
+ * under {@code features.<slice>}, a pure {@code kernel}, I/O seams in {@code ports}, one adapter
+ * per port, the shared HTTP kit in {@code web} and {@code Main} as the only composition root.
  *
- * <p>It reads source, not bytecode, so it also sees fully qualified names written inline. A rule
- * whose package does not exist yet has nothing to check and passes; that is what lets the rules go
- * in before the first slice moves.
+ * <ol>
+ *   <li>{@code kernel} imports only the JDK, and never JDBC.
+ *   <li>{@code ports} import only the kernel and the JDK.
+ *   <li>{@code features.<slice>} never imports another slice or an adapter, and otherwise imports
+ *       only {@link #FEATURE_IMPORTS}.
+ *   <li>{@code adapters} never import {@code web} or {@code features}.
+ *   <li>{@code web} imports features only in {@code WebModules}, the route table.
+ *   <li>Only {@code Main} names adapters.
+ * </ol>
+ *
+ * <p>It reads source, not bytecode, so it also sees fully qualified names written inline.
  */
 final class TargetLayout {
 
     static final String BASE = "dev.thiru.bms.";
+
+    /** What a slice may import besides its own slice. */
+    static final List<String> FEATURE_IMPORTS =
+            List.of("java.", "in.jolt.", BASE + "kernel.", BASE + "ports.", BASE + "web.");
 
     private static final Pattern IMPORT =
             Pattern.compile(
@@ -58,6 +72,9 @@ final class TargetLayout {
             if (!jdk && !dep.startsWith(BASE + "kernel.")) {
                 return "kernel imports only the JDK";
             }
+            if (dep.startsWith("java.sql.")) {
+                return "kernel never touches JDBC";
+            }
             return null;
         }
         if (inPackage(pkg, "ports")) {
@@ -71,15 +88,25 @@ final class TargetLayout {
             if (dep.startsWith(BASE + "adapters.")) {
                 return "features never import adapters";
             }
-            if (dep.startsWith(BASE + "domain.") || dep.startsWith(BASE + "application.")) {
-                return "features never import the legacy layers";
-            }
             if (dep.startsWith(BASE + "features.")) {
                 String other = sliceOf(dep);
-                if (!other.equals(slice)) {
-                    return "feature " + slice + " never imports feature " + other;
-                }
+                return other.equals(slice)
+                        ? null
+                        : "feature " + slice + " never imports feature " + other;
             }
+            if (FEATURE_IMPORTS.stream().noneMatch(dep::startsWith)) {
+                return "features import only the kernel, ports, web, Jolt and the JDK";
+            }
+            return null;
+        }
+        if (inPackage(pkg, "adapters")
+                && (dep.startsWith(BASE + "web.") || dep.startsWith(BASE + "features."))) {
+            return "adapters never import web or features";
+        }
+        if (inPackage(pkg, "web")
+                && dep.startsWith(BASE + "features.")
+                && !rel.equals("web/WebModules.java")) {
+            return "web imports features only in WebModules";
         }
         if (dep.startsWith(BASE + "adapters.")
                 && !inPackage(pkg, "adapters")
@@ -163,6 +190,70 @@ final class TargetLayout {
             }
         }
         return out.toString();
+    }
+
+    private static final Pattern OPENS_TRANSACTION = Pattern.compile("\\binTransaction\\(");
+    private static final Pattern ON_SQLITE = Pattern.compile("\\b(TestDb|SliceKit)\\b");
+
+    /**
+     * Every class under {@code mainFeatures} that opens a transaction and is named by no test under
+     * {@code testFeatures} that runs on SQLite, as {@code <slice>/<Class>}. A test runs on SQLite
+     * when it names {@code TestDb} or {@code SliceKit}, or a helper of its slice that does. This is
+     * the guard that replaced the repository contract on SQLite, which caught {@code
+     * catalogWrites()} shipping unimplemented while its use cases were tested only on a fake.
+     */
+    static List<String> sqlWithoutSqliteTests(Path mainFeatures, Path testFeatures) {
+        List<String> out = new ArrayList<>();
+        for (Path file : javaFiles(mainFeatures)) {
+            if (!OPENS_TRANSACTION.matcher(stripCommentsAndStrings(read(file))).find()) {
+                continue;
+            }
+            String rel = mainFeatures.relativize(file).toString().replace('\\', '/');
+            String slice = rel.substring(0, rel.indexOf('/'));
+            String name = file.getFileName().toString().replace(".java", "");
+            Path tests = testFeatures.resolve(slice);
+            Pattern named = Pattern.compile("\\b" + name + "\\b");
+            boolean tested =
+                    Files.isDirectory(tests)
+                            && sqliteTests(tests).stream().anyMatch(t -> named.matcher(t).find());
+            if (!tested) {
+                out.add(slice + "/" + name);
+            }
+        }
+        return out;
+    }
+
+    /** The code of the tests under {@code dir} that reach SQLite, directly or via a helper. */
+    private static List<String> sqliteTests(Path dir) {
+        Map<String, String> code = new LinkedHashMap<>();
+        for (Path f : javaFiles(dir)) {
+            code.put(
+                    f.getFileName().toString().replace(".java", ""),
+                    stripCommentsAndStrings(read(f)));
+        }
+        Set<String> onSqlite = new LinkedHashSet<>();
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (Map.Entry<String, String> e : code.entrySet()) {
+                if (onSqlite.contains(e.getKey())) {
+                    continue;
+                }
+                boolean direct = ON_SQLITE.matcher(e.getValue()).find();
+                boolean viaHelper =
+                        onSqlite.stream()
+                                .anyMatch(
+                                        h ->
+                                                Pattern.compile("\\b" + h + "\\b")
+                                                        .matcher(e.getValue())
+                                                        .find());
+                if (direct || viaHelper) {
+                    onSqlite.add(e.getKey());
+                    grew = true;
+                }
+            }
+        }
+        return onSqlite.stream().map(code::get).toList();
     }
 
     private static List<Path> javaFiles(Path root) {

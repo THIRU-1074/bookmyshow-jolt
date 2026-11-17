@@ -63,27 +63,44 @@ public final class SchemaRunner {
     /** Applies the migrations under {@code location}; returns the versions applied by this call. */
     public static List<Integer> migrate(String jdbcUrl, String location) {
         Map<Integer, Script> scripts = discover(location);
-        List<Integer> applied = new ArrayList<>();
         try (Connection c = Sqlite.connect(jdbcUrl)) {
-            try (Statement st = c.createStatement()) {
-                st.execute(
-                        "CREATE TABLE IF NOT EXISTS schema_history (version INTEGER PRIMARY KEY,"
-                                + " name TEXT NOT NULL, checksum TEXT NOT NULL,"
-                                + " applied_at INTEGER NOT NULL) STRICT");
-            }
-            for (Script s : scripts.values()) {
-                if (apply(c, s)) {
-                    applied.add(s.version());
-                }
-            }
+            return migrate(c, scripts);
         } catch (SQLException e) {
             throw new IllegalStateException("migration failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** Applies the migrations under {@code location} on {@code c}, which the caller closes. */
+    static List<Integer> migrate(Connection c, String location) throws SQLException {
+        return migrate(c, discover(location));
+    }
+
+    private static List<Integer> migrate(Connection c, Map<Integer, Script> scripts)
+            throws SQLException {
+        try (Statement st = c.createStatement()) {
+            st.execute(
+                    "CREATE TABLE IF NOT EXISTS schema_history (version INTEGER PRIMARY KEY,"
+                            + " name TEXT NOT NULL, checksum TEXT NOT NULL,"
+                            + " applied_at INTEGER NOT NULL) STRICT");
+        }
+        List<Integer> applied = new ArrayList<>();
+        for (Script s : scripts.values()) {
+            if (apply(c, s)) {
+                applied.add(s.version());
+            }
         }
         return applied;
     }
 
+    /**
+     * Runs {@code s} in one transaction. A failure of the cleanup (rollback, back to auto-commit)
+     * after the migration failed is attached to the migration's failure as suppressed, never thrown
+     * in its place: SQLite may already have ended the transaction, and the cleanup error would then
+     * hide the real cause.
+     */
     private static boolean apply(Connection c, Script s) throws SQLException {
         c.setAutoCommit(false);
+        RuntimeException failure = null;
         try {
             // Checked inside the transaction (which is IMMEDIATE) so two starting processes
             // cannot both apply the same version.
@@ -114,14 +131,26 @@ public final class SchemaRunner {
             c.commit();
             return true;
         } catch (SQLException | RuntimeException e) {
-            c.rollback();
-            if (e instanceof SQLException) {
-                throw new IllegalStateException(
-                        "migration V" + s.version() + " failed: " + e.getMessage(), e);
+            failure =
+                    e instanceof RuntimeException r
+                            ? r
+                            : new IllegalStateException(
+                                    "migration V" + s.version() + " failed: " + e.getMessage(), e);
+            try {
+                c.rollback();
+            } catch (SQLException cleanup) {
+                failure.addSuppressed(cleanup);
             }
-            throw e;
+            throw failure;
         } finally {
-            c.setAutoCommit(true);
+            try {
+                c.setAutoCommit(true);
+            } catch (SQLException cleanup) {
+                if (failure == null) {
+                    throw cleanup;
+                }
+                failure.addSuppressed(cleanup);
+            }
         }
     }
 

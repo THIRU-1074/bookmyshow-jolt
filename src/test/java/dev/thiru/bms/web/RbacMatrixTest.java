@@ -2,6 +2,7 @@ package dev.thiru.bms.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import dev.thiru.bms.testing.SliceKit;
 import in.jolt.Route;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -50,8 +51,8 @@ class RbacMatrixTest {
     @Test
     void everyRegisteredRouteHasExactlyOneRuleAndEveryRuleARoute() {
         List<Route> routes;
-        try (WebKit kit = new WebKit()) {
-            routes = kit.app.routes();
+        try (SliceKit kit = WebApp.boot()) {
+            routes = kit.app().routes();
         }
         Set<String> registered =
                 routes.stream()
