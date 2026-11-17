@@ -198,4 +198,16 @@ class SeatEventsTest {
             assertEquals(publishers * perPublisher, got);
         }
     }
+
+    @Test
+    void closeAllEndsEveryStreamAndFreesTheirSlots() throws Exception {
+        SeatEvents hub = new SeatEvents(2, 8);
+        SeatEvents.Subscription a = hub.subscribe(1).orElseThrow();
+        SeatEvents.Subscription b = hub.subscribe(2).orElseThrow();
+        hub.closeAll();
+        assertFalse(a.isOpen());
+        assertFalse(b.isOpen());
+        assertNull(a.poll(Duration.ofMillis(50)));
+        assertEquals(0, hub.subscriberCount());
+    }
 }

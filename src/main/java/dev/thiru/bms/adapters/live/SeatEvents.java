@@ -102,6 +102,13 @@ public final class SeatEvents {
         }
     }
 
+    /** Ends every stream (shutdown), so open SSE responses finish instead of blocking a drain. */
+    public void closeAll() {
+        for (Subscription s : subscriptions.keySet()) {
+            s.close();
+        }
+    }
+
     public int subscriberCount() {
         return count.get();
     }
