@@ -1,7 +1,14 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.Accounts;
+import dev.thiru.bms.application.BookingQueries;
+import dev.thiru.bms.application.CancelBooking;
 import dev.thiru.bms.application.CatalogQueries;
+import dev.thiru.bms.application.Checkout;
+import dev.thiru.bms.application.CreateBooking;
+import dev.thiru.bms.application.CreateHold;
+import dev.thiru.bms.application.MockGatewayPayments;
+import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.User;
 import in.jolt.App;
@@ -10,6 +17,7 @@ import in.jolt.Csrf;
 import in.jolt.HttpException;
 import in.jolt.JsonMapper;
 import in.jolt.Logger;
+import in.jolt.Middleware;
 import in.jolt.RateLimit;
 import in.jolt.RequestId;
 import in.jolt.SecurityHeaders;
@@ -71,13 +79,65 @@ public final class WebModules {
         app.use("/api", rbac.gate());
         app.use("/api/admin", rbac.adminLayer());
 
+        Middleware idempotent = new IdempotencyFilter(deps.idempotency(), deps.clock()).required();
+        // Runs after the gate, so "user" is the verified subject.
+        Middleware holdLimit =
+                Guards.adapt(
+                        RateLimit.perKey(20, minute, req -> "user:" + req.attr("user")), mapper);
+
         CatalogQueries catalog = new CatalogQueries(deps.uow(), deps.clock(), deps.policy());
+        BookingQueries bookings = new BookingQueries(deps.uow());
 
         app.module(new AuthModule(accounts, tokens));
         app.module(new CatalogModule(catalog));
         app.module(
                 new LiveModule(
                         catalog, deps.live(), deps.clock(), settings.sseHeartbeat(), mapper));
+        app.module(
+                new BookingModule(
+                        new CreateHold(
+                                deps.uow(),
+                                deps.publisher(),
+                                deps.ids(),
+                                deps.clock(),
+                                deps.policy()),
+                        new CreateBooking(deps.uow(), deps.publisher(), deps.ids(), deps.clock()),
+                        bookings,
+                        new Checkout(
+                                deps.uow(),
+                                deps.gateway(),
+                                deps.publisher(),
+                                deps.ids(),
+                                deps.clock(),
+                                deps.policy()),
+                        new CancelBooking(
+                                deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
+                        idempotent,
+                        holdLimit));
+
+        MockGatewayPayments mock = null;
+        if (settings.mockGateway()) {
+            mock = new MockGatewayPayments(deps.uow(), deps.mockSender(), deps.ids(), deps.clock());
+            Middleware completeLimit = Guards.adapt(RateLimit.perIp(30, minute), mapper);
+            Middleware csrf = Guards.adapt(Csrf.protect(), mapper);
+            app.use(
+                    "/mock-gateway",
+                    (req, res, next) -> {
+                        if ("POST".equals(req.method())) {
+                            completeLimit.handle(req, res, () -> csrf.handle(req, res, next));
+                        } else {
+                            next.run();
+                        }
+                    });
+            app.use("/mock-gateway", rbac.gate());
+        }
+        app.module(
+                new PaymentModule(
+                        new ProcessPaymentWebhook(
+                                deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
+                        deps.webhookVerifier(),
+                        mock,
+                        mapper));
         // TODO(jolt#71): register the DB check with exposeMetrics once apps can add checks.
         app.get(
                 "/api/health",
