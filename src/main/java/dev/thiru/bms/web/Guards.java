@@ -23,27 +23,39 @@ final class Guards {
         return (req, res, next) -> {
             boolean[] passed = {false};
             Response scratch = new Response(mapper);
-            stock.handle(
-                    req,
-                    scratch,
-                    () -> {
-                        passed[0] = true;
-                        next.run();
-                    });
+            try {
+                stock.handle(
+                        req,
+                        scratch,
+                        () -> {
+                            passed[0] = true;
+                            next.run();
+                        });
+            } catch (HttpException refusal) {
+                if (passed[0]) {
+                    throw refusal;
+                }
+                // Jolt 0.4.1 throws the refusal after setting its headers on the scratch reply.
+                copyRefusalHeaders(scratch, res);
+                throw refusal;
+            }
             if (passed[0]) {
                 return;
             }
-            for (Map.Entry<String, String> h : scratch.headers()) {
-                String name = h.getKey();
-                if (name.equalsIgnoreCase("Retry-After")
-                        || name.equalsIgnoreCase("WWW-Authenticate")) {
-                    res.header(name, h.getValue());
-                }
-            }
+            copyRefusalHeaders(scratch, res);
             int status = scratch.statusCode() >= 400 ? scratch.statusCode() : 403;
             String detail = new String(scratch.body(), StandardCharsets.UTF_8).trim();
             throw new HttpException(
                     status, detail.isEmpty() ? HttpStatus.reasonFor(status) : detail);
         };
+    }
+
+    private static void copyRefusalHeaders(Response scratch, Response res) {
+        for (Map.Entry<String, String> h : scratch.headers()) {
+            String name = h.getKey();
+            if (name.equalsIgnoreCase("Retry-After") || name.equalsIgnoreCase("WWW-Authenticate")) {
+                res.header(name, h.getValue());
+            }
+        }
     }
 }
