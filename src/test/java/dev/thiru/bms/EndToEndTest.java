@@ -285,7 +285,8 @@ class EndToEndTest {
         assertEquals(base + "/mock-gateway/" + paymentId, checkoutUrl);
 
         // Mock gateway: the page, then Pay, which posts a signed webhook back over HTTP.
-        Res page = expect(200, send("GET", checkoutUrl, null, null));
+        // Sent the way a browser navigates, so the SPA fallback must not swallow it.
+        Res page = expect(200, send("GET", checkoutUrl, null, null, "Accept", "text/html"));
         assertTrue(page.body().contains("/mock-gateway/" + paymentId + "/complete"));
         Res paid =
                 expect(
