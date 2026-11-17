@@ -22,9 +22,9 @@ Single-node movie ticketing: browse a city's movies and shows, hold seats, pay t
 | Cinema | id, cityId, name, address | name unique within city |
 | Screen | id, cinemaId, name, layout | name unique within cinema; layout valid (below); capacity 1..1000 |
 | Movie | id, title, languages[], genres[], certificate, durationMinutes, releaseDate, posterUrl, description | title 1..120 chars; languages and genres non-empty, no duplicates; certificate in `U, UA, A, S`; duration 1..400; posterUrl https or a site-relative path; description at most 2000 chars |
-| Show | id, movieId, screenId, startsAt, language, format, prices{category: amount}, status | language is one of the movie's; format in `2D, 3D, IMAX`; a price (100..1000000 paise) for every layout category and no others; status `SCHEDULED` or `CANCELLED`; shows on one screen MUST NOT overlap, where a show occupies `[startsAt, startsAt + duration + 15 min)` |
-| SeatHold | id, showId, userId, seats[], createdAt, expiresAt, status | 1..`MAX_SEATS` distinct seats that exist and are not blocked; expiresAt = createdAt + `HOLD_TTL`; all-or-nothing; status `ACTIVE, CONSUMED, RELEASED, EXPIRED` |
-| Booking | id, code, userId, showId, holdId, seats[], amount, currency, status, expiresAt, refundAmount, version, createdAt, updatedAt | amount = sum of seat prices at hold time; code `BK` + 8 Crockford base32 chars, unique; version starts at 0 and increments on every write |
+| Show | id, movieId, screenId, startsAt, endsAt, language, format, prices{category: amount}, status | language is one of the movie's; format in `2D, 3D, IMAX`; a price (100..1000000 paise) for every layout category and no others; status `SCHEDULED` or `CANCELLED`; endsAt = startsAt + movie duration + 15 min, so the cleaning buffer is included; shows on one screen MUST NOT overlap, where a show occupies `[startsAt, endsAt)` |
+| SeatHold | id, showId, userId, seats[], createdAt, expiresAt, status | 1..`MAX_SEATS` distinct seats that exist and are not blocked (an empty list or more than `MAX_SEATS` is 422 `VALIDATION` on the `seats` field); expiresAt = createdAt + `HOLD_TTL`; all-or-nothing; status `ACTIVE, CONSUMED, RELEASED, EXPIRED` |
+| Booking | id, code, userId, showId, holdId, seats[], amount, currency, status, expiresAt, refundAmount, checkoutCount, version, createdAt, updatedAt | each booking seat carries (seat, category, price) captured at hold time; amount = sum of seat prices; checkoutCount counts checkouts and is capped at 3; code `BK` + 8 Crockford base32 chars, unique; version starts at 0 and increments on every write |
 | Payment | id, bookingId, amount, currency, status, gatewayRef, refundedAmount, createdAt, updatedAt | amount = booking amount; status `INITIATED, SUCCEEDED, FAILED, REFUNDED`; refundedAmount <= amount |
 | User | id, email, passwordHash, name, roles, createdAt | email unique, stored lowercase; passwordHash from `PasswordHasher`; password 10..128 chars; roles subset of `USER, ADMIN`, never empty |
 
@@ -35,7 +35,7 @@ Single-node movie ticketing: browse a city's movies and shows, hold seats, pay t
  "rows": [{"row": "A", "seats": 14, "category": "CLASSIC", "aisleAfter": [4, 10], "blocked": [1]}]}
 ```
 
-Rules: rows unique and contiguous from `A`; 1..26 rows; seats 1..50 per row; category codes `[A-Z_]{2,16}`, unique, each used by at least one row; `aisleAfter` and `blocked` values within 1..seats. Capacity = sum of seats minus blocked.
+Rules: rows unique and contiguous from `A`; 1..26 rows; seats 1..50 per row; category codes `[A-Z_]{2,16}`, unique, each used by at least one row; `aisleAfter` and `blocked` values within 1..seats. `blocked` MUST NOT contain duplicates (rejected as 422); every layout MUST have at least one bookable seat. Capacity = sum of seats minus blocked.
 
 ## 4. Booking lifecycle
 
@@ -53,16 +53,16 @@ Rules: rows unique and contiguous from `A`; 1..26 rows; seats 1..50 per row; cat
 | (hold ACTIVE) | HELD | `POST /api/bookings` | owner | hold ACTIVE and unexpired; hold becomes CONSUMED; booking.expiresAt = hold.expiresAt |
 | HELD | PAYMENT_PENDING | `POST /api/bookings/{id}/checkout` | owner | unexpired; at most 3 checkouts per booking; expiresAt = max(expiresAt, now + `PAYMENT_WINDOW`) |
 | PAYMENT_PENDING | CONFIRMED | webhook `payment.succeeded` | gateway | unexpired, every seat lock still owned by this booking, amount matches; locks become BOOKED |
-| PAYMENT_PENDING | HELD | webhook `payment.failed` | gateway | unexpired; payment FAILED; the user may check out again |
-| HELD, PAYMENT_PENDING | EXPIRED | sweeper or lazy check | system | now >= expiresAt; locks deleted; a later success webhook marks the payment SUCCEEDED then REFUNDED in full |
-| HELD | CANCELLED | `POST /api/bookings/{id}/cancel` | owner | locks deleted; no payment exists |
+| PAYMENT_PENDING | HELD | webhook `payment.failed` | gateway | unexpired; payment FAILED; the user may check out again. A success webhook whose amount or currency does not match also marks the payment FAILED and returns the booking to HELD (422 to the caller) |
+| HELD, PAYMENT_PENDING | EXPIRED | sweeper or lazy check | system | now >= expiresAt; locks deleted; a success webhook arriving after expiry or cancellation marks the payment SUCCEEDED then REFUNDED in full (refundedAmount = amount) |
+| HELD | CANCELLED | `POST /api/bookings/{id}/cancel` | owner | locks deleted; no payment exists. Cancelling a booking whose expiresAt has passed but which the sweeper has not yet marked EXPIRED is 409 `BOOKING_STATE` |
 | PAYMENT_PENDING | (none) | cancel | owner | 409 `PAYMENT_IN_PROGRESS` |
 | CONFIRMED | REFUNDED or CANCELLED | cancel | owner | before show start only (below); locks deleted |
 | CONFIRMED, HELD, PAYMENT_PENDING | REFUNDED or CANCELLED | `POST /api/admin/shows/{id}/cancel` | admin | CONFIRMED gets a full refund; others become CANCELLED |
 
-**Refund rule** (t = startsAt - now at cancellation): t > 24 h: 100 %; 4 h <= t <= 24 h: 50 %, rounded down to the paisa; 0 < t < 4 h: 0 % (status CANCELLED, seats released for resale); t <= 0: 409 `SHOW_STARTED`. The mock gateway refunds synchronously.
+**Refund rule** (t = startsAt - now at cancellation): t > 24 h: 100 %; 4 h <= t <= 24 h: 50 %, rounded down to the paisa; 0 < t < 4 h: 0 % (status CANCELLED, seats released for resale); t <= 0: 409 `SHOW_STARTED`. The mock gateway refunds synchronously. A partial refund leaves the payment REFUNDED with `refundedAmount` set to the refunded paise (less than `amount`); payment status is never left SUCCEEDED once any refund is made.
 
-Terminal states: EXPIRED, CANCELLED, REFUNDED. Sales for a show close at startsAt: holds after that give 409 `SHOW_STARTED`.
+Terminal states: EXPIRED, CANCELLED, REFUNDED. Sales for a show close at startsAt, and startsAt == now counts as started: holds then give 409 `SHOW_STARTED`. A hold on a CANCELLED show gives 409 `BOOKING_STATE`.
 
 ## 5. Concurrency and correctness
 
@@ -174,7 +174,7 @@ Access tokens live 15 min. The refresh token (30 days) is only in cookie `bms_re
 
 | Method, path | Role | Request | Response |
 |---|---|---|---|
-| GET /api/shows/{id}/seats | - | - | 200 `{showId, version, categories:[{code,name,amount}], rows:[{row, seats:[{id, number, category, status}], aisleAfter}], holdTtlSeconds}`; status `AVAILABLE, HELD, BOOKED, BLOCKED`; `ETag` + `Cache-Control: no-cache` |
+| GET /api/shows/{id}/seats | - | - | 200 `{showId, version, categories:[{code,name,amount}], rows:[{row, seats:[{id, number, category, status}], aisleAfter}], holdTtlSeconds}`; `version` is a content hash of the seat states (equal maps give equal versions; it is not a counter); status `AVAILABLE, HELD, BOOKED, BLOCKED`; `ETag` + `Cache-Control: no-cache` |
 | GET /api/shows/{id}/events | - | - | SSE stream (below) |
 | POST /api/holds | U, key | `{showId, seats:["C7","C8"]}` | 201 `{id, showId, seats, amount, currency, expiresAt}`; 409 `SEAT_UNAVAILABLE`/`SHOW_STARTED`; 422 |
 | DELETE /api/holds/{id} | owner | - | 204; 404 if not owner or not ACTIVE |
@@ -194,7 +194,7 @@ Booking JSON: `{id, code, status, show:{id, movieTitle, cinemaName, screenName, 
 - `POST /api/payments/webhook` (public, verified by signature):
   - headers `Bms-Timestamp: <unix seconds>`, `Bms-Signature: v1=<hex HMAC-SHA256(WEBHOOK_SECRET, timestamp + "." + rawBody)>`;
   - body `{eventId, type: "payment.succeeded"|"payment.failed", paymentId, gatewayRef, amount, currency, occurredAt}`;
-  - 401 on a missing or bad signature (constant-time compare) or a timestamp more than 300 s from now; 200 `{"duplicate":true}` for a seen `eventId`; 422 on amount or currency mismatch (payment marked FAILED); 200 `{"status": "<booking status>"}` otherwise.
+  - 401 on a missing or bad signature (constant-time compare) or a timestamp more than 300 s from now; 200 `{"duplicate":true}` for a seen `eventId`; 422 on amount or currency mismatch (payment marked FAILED and the booking returned to HELD); 200 `{"status": "<booking status>"}` otherwise.
 
 ### Live seat updates: `GET /api/shows/{id}/events`
 
@@ -208,7 +208,7 @@ Booking JSON: `{id, code, status, show:{id, movieTitle, cinemaName, screenName, 
 | `seat-booked` | `{"showId":7,"seats":["C7","C8"]}` |
 | `heartbeat` | `{"ts":"2026-11-20T13:00:15Z"}` every 15 s |
 
-Events are published after the transaction commits and never carry user data. The stream ends when the show starts or is cancelled.
+Events are published after the transaction commits and never carry user data. The stream ends when the show starts or is cancelled: on admin show cancel the live adapter closes every stream for that show.
 
 ### Admin (role A, prefix `/api/admin`)
 
