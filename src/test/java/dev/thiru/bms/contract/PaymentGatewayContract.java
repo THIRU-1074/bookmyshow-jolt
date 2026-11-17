@@ -12,7 +12,7 @@ import java.net.URI;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** The outbound gateway as Checkout, CancelBooking and CancelShow use it. */
+/** The outbound gateway as the booking (checkout, cancel) and admin (show cancel) slices use it. */
 public abstract class PaymentGatewayContract {
 
     private PaymentGateway gateway;

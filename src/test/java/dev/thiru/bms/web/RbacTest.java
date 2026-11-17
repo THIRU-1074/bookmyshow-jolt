@@ -155,19 +155,19 @@ class RbacTest {
                 .post("/api/owner/cinemas/2/screens")
                 .header("Authorization", bearer)
                 .header("Idempotency-Key", kit.key())
-                .json(Map.of("name", "Sneaky", "layout", OwnerApiTest.layout(10)))
+                .json(Map.of("name", "Sneaky", "layout", layout(10)))
                 .expect(404)
                 .jsonEquals("code", "NOT_FOUND");
         kit.http
                 .put("/api/owner/screens/" + FakeWorld.SCREEN_ID)
                 .header("Authorization", bearer)
-                .json(Map.of("name", "Sneaky", "layout", OwnerApiTest.layout(10)))
+                .json(Map.of("name", "Sneaky", "layout", layout(10)))
                 .expect(404);
         kit.http
                 .post("/api/owner/shows")
                 .header("Authorization", bearer)
                 .header("Idempotency-Key", kit.key())
-                .json(OwnerApiTest.show(FakeWorld.SCREEN_ID, FakeWorld.T0.plusSeconds(86_400 * 6)))
+                .json(show(FakeWorld.SCREEN_ID, FakeWorld.T0.plusSeconds(86_400 * 6)))
                 .expect(404);
         kit.http
                 .post("/api/owner/shows/" + show + "/cancel")
@@ -338,5 +338,42 @@ class RbacTest {
                 JwtAuth.hs256(WebKit.SECRET)
                         .sign("1", Map.of("roles", List.of("ROOT")), Duration.ofMinutes(5));
         kit.http.get("/api/bookings").header("Authorization", WebKit.bearer(unknown)).expect(403);
+    }
+
+    /** A one-row layout of {@code seats} CLASSIC seats. */
+    private static Map<String, Object> layout(int seats) {
+        return Map.of(
+                "categories",
+                List.of(Map.of("code", "CLASSIC", "name", "Classic")),
+                "rows",
+                List.of(
+                        Map.of(
+                                "row",
+                                "A",
+                                "seats",
+                                seats,
+                                "category",
+                                "CLASSIC",
+                                "aisleAfter",
+                                List.of(),
+                                "blocked",
+                                List.of())));
+    }
+
+    /** A show body for the seeded movie with the seeded CLASSIC and PRIME prices. */
+    private static Map<String, Object> show(long screenId, java.time.Instant startsAt) {
+        return Map.of(
+                "movieId",
+                1,
+                "screenId",
+                screenId,
+                "startsAt",
+                startsAt.toString(),
+                "language",
+                "en",
+                "format",
+                "2D",
+                "prices",
+                Map.of("CLASSIC", 15000, "PRIME", 25000));
     }
 }

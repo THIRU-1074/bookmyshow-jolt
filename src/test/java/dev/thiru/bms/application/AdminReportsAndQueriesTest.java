@@ -8,13 +8,16 @@ import dev.thiru.bms.kernel.DomainException;
 import dev.thiru.bms.kernel.DomainException.Code;
 import dev.thiru.bms.kernel.booking.Booking;
 import dev.thiru.bms.kernel.booking.BookingStatus;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Booking queries and the mock gateway on FakeWorld. Its report cases moved to {@code
+ * features.admin.AdminReportsTest}.
+ */
 class AdminReportsAndQueriesTest {
 
     FakeWorld w;
@@ -37,36 +40,6 @@ class AdminReportsAndQueriesTest {
                                 "INR",
                                 w.clock.instant()));
         confirmed = w.booking(held.id());
-    }
-
-    @Test
-    void reportCountsBookedSeatsRevenueAndOccupancy() {
-        AdminReports reports = new AdminReports(w, w.clock);
-        AdminReports.ShowReportDetail d = reports.show(FakeWorld.SHOW_ID);
-        assertEquals(2, d.show().booked());
-        assertEquals(23, d.show().capacity());
-        assertEquals(8.7, d.show().occupancyPercent());
-        assertEquals(40000, d.show().revenue());
-        assertEquals(2, d.byCategory().size());
-        assertEquals(15000, d.byCategory().get(0).revenue());
-        assertEquals(
-                1,
-                reports.shows(null, FakeWorld.T0, FakeWorld.T0.plus(Duration.ofDays(10)), 1, 20)
-                        .total());
-        assertEquals(1, reports.stats().bookingsConfirmedToday());
-        assertEquals(
-                Code.NOT_FOUND,
-                assertThrows(DomainException.class, () -> reports.show(404)).code());
-    }
-
-    @Test
-    void refundsReduceRevenue() {
-        w.clock.advance(Duration.ofHours(1));
-        new CancelBooking(w, w, w, w.clock).execute(7, confirmed.id());
-        AdminReports.ShowReport r = new AdminReports(w, w.clock).show(FakeWorld.SHOW_ID).show();
-        assertEquals(0, r.booked());
-        assertEquals(40000, r.refunded());
-        assertEquals(0, r.revenue());
     }
 
     @Test

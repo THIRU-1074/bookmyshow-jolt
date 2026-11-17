@@ -18,6 +18,9 @@ import java.time.Instant;
 /**
  * Show cancellation by an admin or a theatre owner of the show's cinema: refunds confirmed
  * bookings, cancels open ones. Safe to repeat.
+ *
+ * <p>Kept as a test fixture until wave 4: {@code ProcessPaymentWebhookTest} cancels a show with it.
+ * Delete it with that test. Production uses {@code features.admin.CancelShow}.
  */
 public final class CancelShow {
 
@@ -36,20 +39,15 @@ public final class CancelShow {
     }
 
     public Result execute(long showId) {
-        return execute(CinemaScope.everything(), showId);
-    }
-
-    public Result execute(CinemaScope scope, long showId) {
         EventBuffer events = new EventBuffer();
-        Result result = uow.inTransaction(r -> run(r, scope, showId, events));
+        Result result = uow.inTransaction(r -> run(r, showId, events));
         events.publishTo(publisher);
         return result;
     }
 
-    private Result run(Repositories r, CinemaScope scope, long showId, EventBuffer events) {
+    private Result run(Repositories r, long showId, EventBuffer events) {
         Instant now = clock.instant();
         Show show = r.shows().findById(showId).orElseThrow(() -> DomainException.notFound("Show"));
-        scope.require(r, r.screens().findById(show.screenId()).orElseThrow().cinemaId(), "Show");
         if (show.status() != ShowStatus.CANCELLED) {
             r.shows().save(show.cancel());
         }

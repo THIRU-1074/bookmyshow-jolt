@@ -1,13 +1,11 @@
 package dev.thiru.bms.web;
 
-import dev.thiru.bms.application.AdminCatalog;
-import dev.thiru.bms.application.AdminReports;
-import dev.thiru.bms.application.CancelShow;
 import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.application.ProcessPaymentWebhook;
-import dev.thiru.bms.application.UserAdmin;
 import dev.thiru.bms.features.accounts.Accounts;
 import dev.thiru.bms.features.accounts.AuthRoutes;
+import dev.thiru.bms.features.admin.AdminRoutes;
+import dev.thiru.bms.features.admin.OwnerRoutes;
 import dev.thiru.bms.features.booking.BookingRoutes;
 import dev.thiru.bms.features.catalog.CatalogRoutes;
 import dev.thiru.bms.features.live.LiveRoutes;
@@ -101,19 +99,17 @@ public final class WebModules {
                                 .clock(deps.clock()),
                         mock,
                         mapper));
-        AdminCatalog adminCatalog = new AdminCatalog(deps.uow(), deps.clock());
-        AdminReports reports = new AdminReports(deps.uow(), deps.clock());
-        CancelShow cancelShow =
-                new CancelShow(deps.uow(), deps.gateway(), deps.publisher(), deps.clock());
         pipeline.module(
-                new AdminModule(
-                        adminCatalog,
-                        reports,
-                        cancelShow,
-                        new UserAdmin(deps.uow()),
+                new AdminRoutes(
+                        deps.db(),
+                        deps.clock(),
+                        deps.gateway(),
+                        deps.publisher(),
                         deps.live(),
                         idempotent));
-        pipeline.module(new OwnerModule(adminCatalog, reports, cancelShow, idempotent));
+        pipeline.module(
+                new OwnerRoutes(
+                        deps.db(), deps.clock(), deps.gateway(), deps.publisher(), idempotent));
         // The same check feeds /_jolt/health; /api/health keeps its own JSON shape for Render.
         // TODO(jolt#84): run the registered checks for /api/health once Jolt exposes them.
         app.health("db", () -> deps.dbUp().getAsBoolean());

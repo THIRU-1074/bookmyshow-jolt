@@ -31,9 +31,9 @@ class RecordGeneratorTest {
     private static final String JOLT_PAGE = "in.jolt.Page$Result";
 
     /**
-     * Schema name to every record serialised for it today. A shape shared by a moved slice and the
-     * legacy web layer (City, Cinema, MovieDetail while admin keeps its Dtos copy) lists both, and
-     * each is checked against the schema.
+     * Schema name to every record serialised for it today. A shape that several slices serialise
+     * (City, Cinema and MovieDetail in catalog and admin; the seat map in catalog and live) lists
+     * each copy, and each is checked against the schema.
      */
     static final Map<String, List<String>> WEB_RECORDS = webRecords();
 
@@ -49,25 +49,6 @@ class RecordGeneratorTest {
 
     private static Map<String, List<String>> webRecords() {
         Map<String, List<String>> m = new LinkedHashMap<>();
-        String[][] dtos = {
-            {"City", "CityDto"},
-            {"MovieDetail", "MovieDetail"},
-            {"Cinema", "CinemaDto"},
-            {"LayoutCategory", "CategoryRequest"},
-            {"LayoutRow", "RowRequest"},
-            {"Layout", "LayoutRequest"},
-            {"Screen", "ScreenDto"},
-            {"Show", "ShowDto"},
-            {"ShowReport", "ShowReportDto"},
-            {"CategoryReport", "CategoryReportDto"},
-            {"ShowReportDetail", "ShowReportDetailDto"},
-            {"Stats", "StatsDto"},
-            {"Account", "AccountDto"},
-            {"OwnedCinema", "OwnedCinemaDto"},
-        };
-        for (String[] d : dtos) {
-            add(m, d[0], WEB + "Dtos$" + d[1]);
-        }
         String catalog = "dev.thiru.bms.features.catalog.CatalogDtos$";
         String live = "dev.thiru.bms.features.live.LiveDtos$";
         add(m, "City", catalog + "CityDto");
@@ -86,6 +67,26 @@ class RecordGeneratorTest {
             String schema = r.substring(0, r.length() - "Dto".length());
             add(m, schema, catalog + r);
             add(m, schema, live + r);
+        }
+        String admin = "dev.thiru.bms.features.admin.AdminDtos$";
+        String[][] adminDtos = {
+            {"City", "CityDto"},
+            {"MovieDetail", "MovieDetail"},
+            {"Cinema", "CinemaDto"},
+            {"LayoutCategory", "CategoryRequest"},
+            {"LayoutRow", "RowRequest"},
+            {"Layout", "LayoutRequest"},
+            {"Screen", "ScreenDto"},
+            {"Show", "ShowDto"},
+            {"ShowReport", "ShowReportDto"},
+            {"CategoryReport", "CategoryReportDto"},
+            {"ShowReportDetail", "ShowReportDetailDto"},
+            {"Stats", "StatsDto"},
+            {"Account", "AccountDto"},
+            {"OwnedCinema", "OwnedCinemaDto"},
+        };
+        for (String[] d : adminDtos) {
+            add(m, d[0], admin + d[1]);
         }
         String accounts = "dev.thiru.bms.features.accounts.AccountsDtos$";
         add(m, "User", accounts + "UserDto");
@@ -111,7 +112,7 @@ class RecordGeneratorTest {
                         "MovieRequest",
                         "ShowRequest",
                         "CancelShowResult")) {
-            add(m, r, WEB + "AdminModule$" + r);
+            add(m, r, admin + r);
         }
         for (String page :
                 List.of(
@@ -173,7 +174,7 @@ class RecordGeneratorTest {
 
     @Test
     void aSchemaMappedToSeveralRecordsChecksEachOfThem() throws Exception {
-        String dto = WEB + "Dtos$CityDto";
+        String dto = "dev.thiru.bms.features.catalog.CatalogDtos$CityDto";
         String slice = RecordGeneratorTest.class.getName() + "$SliceCity";
         String drifted = RecordGeneratorTest.class.getName() + "$DriftedCity";
         assertEquals(List.of(), mismatches(Map.of("City", List.of(dto, slice)), generated));
