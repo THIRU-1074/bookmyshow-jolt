@@ -1,8 +1,11 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.Accounts;
+import dev.thiru.bms.application.AdminCatalog;
+import dev.thiru.bms.application.AdminReports;
 import dev.thiru.bms.application.BookingQueries;
 import dev.thiru.bms.application.CancelBooking;
+import dev.thiru.bms.application.CancelShow;
 import dev.thiru.bms.application.CatalogQueries;
 import dev.thiru.bms.application.Checkout;
 import dev.thiru.bms.application.CreateBooking;
@@ -138,6 +141,13 @@ public final class WebModules {
                         deps.webhookVerifier(),
                         mock,
                         mapper));
+        app.module(
+                new AdminModule(
+                        new AdminCatalog(deps.uow(), deps.clock()),
+                        new AdminReports(deps.uow(), deps.clock()),
+                        new CancelShow(deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
+                        deps.live(),
+                        idempotent));
         // TODO(jolt#71): register the DB check with exposeMetrics once apps can add checks.
         app.get(
                 "/api/health",
