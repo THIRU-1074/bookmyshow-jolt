@@ -22,6 +22,22 @@ class OpsApiTest {
     }
 
     @Test
+    void joltHealthReflectsTheDatabaseCheck() {
+        kit.app.exposeMetrics();
+        kit.http
+                .get("/_jolt/health")
+                .expect(200)
+                .jsonEquals("status", "UP")
+                .jsonEquals("checks.db", "UP");
+        kit.dbUp.set(false);
+        kit.http
+                .get("/_jolt/health")
+                .expect(503)
+                .jsonEquals("status", "DOWN")
+                .jsonEquals("checks.db", "DOWN");
+    }
+
+    @Test
     void securityHeadersAreOnEveryResponse() {
         var res = kit.http.get("/api/cities").expect(200);
         assertEquals(WebModules.CSP, res.header("Content-Security-Policy"));

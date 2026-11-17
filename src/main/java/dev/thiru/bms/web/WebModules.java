@@ -163,7 +163,8 @@ public final class WebModules {
                         deps.live(),
                         idempotent));
         app.module(new OwnerModule(adminCatalog, reports, cancelShow, idempotent));
-        // TODO(jolt#71): register the DB check with exposeMetrics once apps can add checks.
+        // The same check feeds /_jolt/health; /api/health keeps its own JSON shape for Render.
+        app.health("db", () -> deps.dbUp().getAsBoolean());
         app.get(
                 "/api/health",
                 (req, res) -> {

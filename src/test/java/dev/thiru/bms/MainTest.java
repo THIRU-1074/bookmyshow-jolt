@@ -86,7 +86,11 @@ class MainTest {
     void metricsNeedTheBearerToken() {
         JoltTest http = boot("METRICS_TOKEN", "metrics-token");
         http.get("/_jolt/metrics").expect(401);
-        http.get("/_jolt/metrics").header("Authorization", "Bearer metrics-token").expect(200);
+        http.get("/_jolt/metrics")
+                .header("Authorization", "Bearer metrics-token")
+                .expect(200)
+                .bodyContains("bms_sse_subscribers 0");
+        http.get("/_jolt/health").expect(200).jsonEquals("checks.db", "UP");
     }
 
     @Test

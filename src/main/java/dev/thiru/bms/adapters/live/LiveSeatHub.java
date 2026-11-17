@@ -4,6 +4,7 @@ import dev.thiru.bms.domain.SeatId;
 import dev.thiru.bms.domain.port.LiveSeats;
 import dev.thiru.bms.domain.port.SeatEvent;
 import dev.thiru.bms.domain.port.SeatEventPublisher;
+import in.jolt.AppMetrics;
 import in.jolt.HttpException;
 import in.jolt.Hub;
 import java.time.Duration;
@@ -101,6 +102,11 @@ public final class LiveSeatHub implements LiveSeats, SeatEventPublisher {
     @Override
     public int openStreams() {
         return hub.subscribers();
+    }
+
+    /** Adds {@code bms_sse_subscribers} and {@code bms_sse_dropped_total} to {@code metrics}. */
+    public void metrics(AppMetrics metrics) {
+        hub.metrics(metrics, "bms_sse");
     }
 
     /** Ends every stream (shutdown), so open SSE responses finish instead of holding a drain. */

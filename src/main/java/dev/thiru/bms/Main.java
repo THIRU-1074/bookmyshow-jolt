@@ -167,6 +167,7 @@ public final class Main {
             App app = Jolt.create(joltConfig(config, jolt));
             // Stop hooks run in reverse: the sweeper stops before the pool closes.
             app.onStop(db::close);
+            live.metrics(app.metrics());
             scheduleSweep(app, config, clock, uow, live, refreshTokens, idempotency);
             // Registers the SPEC 9 middleware chain first, then every API route.
             WebModules.install(app, deps);
