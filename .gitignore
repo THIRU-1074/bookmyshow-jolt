@@ -25,3 +25,6 @@ data/
 .idea/
 *.iml
 .vscode/
+
+# Local UI screenshots from browser checks
+web/screenshots/

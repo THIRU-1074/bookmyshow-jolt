@@ -1,0 +1,131 @@
+/*
+ * Houselights design tokens.
+ * Dark is the house default: an aubergine auditorium lit by one marquee-amber accent.
+ * Light is "programme paper": cool lavender-grey stock with plum ink.
+ * Every text/background pair below is chosen for WCAG AA (4.5:1 body, 3:1 large and UI).
+ */
+:root {
+  color-scheme: dark;
+  --bg: #17111f;
+  --bg-raised: #221a2e;
+  --bg-sunken: #110c18;
+  --bg-overlay: rgb(23 17 31 / 0.86);
+  --line: #3b3049;
+  --line-strong: #5a4b6b;
+  --ink: #f5eff8;
+  --ink-2: #cdc2d8;
+  --ink-3: #a99bb8;
+  --accent: #ffb547;
+  --accent-strong: #ffc670;
+  --accent-ink: #2a1600;
+  --accent-text: #ffc670;
+  --accent-soft: rgb(255 181 71 / 0.14);
+  --danger: #ff8a80;
+  --danger-fill: #d64545;
+  --success: #6fdcaa;
+  --warning: #ffd166;
+  --focus: #8fd3ff;
+
+  --tier-0: #5ec4b6;
+  --tier-1: #b49cff;
+  --tier-2: #ff8fa3;
+  --tier-3: #a6d672;
+  --seat-taken: #4a3f58;
+  --seat-taken-ink: #b9adc6;
+
+  --shadow-1: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 30px -12px rgb(0 0 0 / 0.6);
+  --shadow-2: 0 30px 80px -30px rgb(0 0 0 / 0.8);
+  --beam: rgb(255 214 150 / 0.55);
+  --backdrop-opacity: 0.55;
+
+  --font-display: 'Big Shoulders Display Variable', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  --font-body: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+
+  /* 1.25 scale on a 16 px base */
+  --t-xs: 0.8rem;
+  --t-sm: 0.9rem;
+  --t-md: 1rem;
+  --t-lg: 1.25rem;
+  --t-xl: 1.563rem;
+  --t-2xl: 1.953rem;
+  --t-3xl: 2.441rem;
+  --t-4xl: 3.052rem;
+  --t-5xl: clamp(3rem, 7vw + 1rem, 5.96rem);
+
+  --r-sm: 6px;
+  --r-md: 12px;
+  --r-lg: 20px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --max: 1200px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+    --bg: #f3f1f7;
+    --bg-raised: #ffffff;
+    --bg-sunken: #e8e4ef;
+    --bg-overlay: rgb(243 241 247 / 0.9);
+    --line: #d8d1e2;
+    --line-strong: #a99dba;
+    --ink: #1c1426;
+    --ink-2: #463a55;
+    --ink-3: #5f526f;
+    --accent: #f2a33a;
+    --accent-strong: #e08f1d;
+    --accent-ink: #2a1600;
+    --accent-text: #8a4700;
+    --accent-soft: rgb(242 163 58 / 0.18);
+    --danger: #b3261e;
+    --danger-fill: #b3261e;
+    --success: #17714a;
+    --warning: #8a5a00;
+    --focus: #1a5fd0;
+    --tier-0: #0d7a6e;
+    --tier-1: #6247cc;
+    --tier-2: #bd3a59;
+    --tier-3: #4c7a1c;
+    --seat-taken: #cfc7da;
+    --seat-taken-ink: #4f4360;
+    --shadow-1: 0 1px 2px rgb(40 20 60 / 0.06), 0 12px 30px -16px rgb(40 20 60 / 0.25);
+    --shadow-2: 0 30px 70px -30px rgb(40 20 60 / 0.35);
+    --beam: rgb(242 163 58 / 0.4);
+    --backdrop-opacity: 0.28;
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f3f1f7;
+  --bg-raised: #ffffff;
+  --bg-sunken: #e8e4ef;
+  --bg-overlay: rgb(243 241 247 / 0.9);
+  --line: #d8d1e2;
+  --line-strong: #a99dba;
+  --ink: #1c1426;
+  --ink-2: #463a55;
+  --ink-3: #5f526f;
+  --accent: #f2a33a;
+  --accent-strong: #e08f1d;
+  --accent-ink: #2a1600;
+  --accent-text: #8a4700;
+  --accent-soft: rgb(242 163 58 / 0.18);
+  --danger: #b3261e;
+  --danger-fill: #b3261e;
+  --success: #17714a;
+  --warning: #8a5a00;
+  --focus: #1a5fd0;
+  --tier-0: #0d7a6e;
+  --tier-1: #6247cc;
+  --tier-2: #bd3a59;
+  --tier-3: #4c7a1c;
+  --seat-taken: #cfc7da;
+  --seat-taken-ink: #4f4360;
+  --shadow-1: 0 1px 2px rgb(40 20 60 / 0.06), 0 12px 30px -16px rgb(40 20 60 / 0.25);
+  --shadow-2: 0 30px 70px -30px rgb(40 20 60 / 0.35);
+  --beam: rgb(242 163 58 / 0.4);
+  --backdrop-opacity: 0.28;
+}
