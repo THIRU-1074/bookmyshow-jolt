@@ -1,7 +1,5 @@
 package dev.thiru.bms.web;
 
-import dev.thiru.bms.application.MockGatewayPayments;
-import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.features.accounts.Accounts;
 import dev.thiru.bms.features.accounts.AuthRoutes;
 import dev.thiru.bms.features.admin.AdminRoutes;
@@ -9,6 +7,7 @@ import dev.thiru.bms.features.admin.OwnerRoutes;
 import dev.thiru.bms.features.booking.BookingRoutes;
 import dev.thiru.bms.features.catalog.CatalogRoutes;
 import dev.thiru.bms.features.live.LiveRoutes;
+import dev.thiru.bms.features.payments.PaymentRoutes;
 import in.jolt.App;
 import in.jolt.JsonMapper;
 import in.jolt.Middleware;
@@ -83,21 +82,19 @@ public final class WebModules {
                         idempotent,
                         pipeline.holdLimit()));
 
-        MockGatewayPayments mock =
-                settings.mockGateway()
-                        ? new MockGatewayPayments(
-                                deps.uow(), deps.mockSender(), deps.ids(), deps.clock())
-                        : null;
         pipeline.module(
-                new PaymentModule(
-                        new ProcessPaymentWebhook(
-                                deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
+                new PaymentRoutes(
+                        deps.db(),
+                        deps.gateway(),
+                        deps.publisher(),
+                        deps.ids(),
+                        deps.clock(),
                         Webhooks.hmacSha256(settings.webhookSecret(), "Bms-Signature")
                                 .prefix("v1=")
                                 .timestampHeader("Bms-Timestamp")
                                 .tolerance(WEBHOOK_TOLERANCE)
                                 .clock(deps.clock()),
-                        mock,
+                        settings.mockGateway() ? deps.mockSender() : null,
                         mapper));
         pipeline.module(
                 new AdminRoutes(

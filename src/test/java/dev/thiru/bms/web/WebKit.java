@@ -11,7 +11,6 @@ import dev.thiru.bms.kernel.catalog.Movie;
 import dev.thiru.bms.kernel.catalog.Screen;
 import dev.thiru.bms.kernel.catalog.Show;
 import dev.thiru.bms.ports.Db;
-import dev.thiru.bms.ports.GatewayCallback;
 import dev.thiru.bms.testing.FakeLive;
 import dev.thiru.bms.testing.MemoryRefreshTokens;
 import dev.thiru.bms.testing.PlainHasher;
@@ -24,7 +23,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -50,7 +48,6 @@ final class WebKit implements AutoCloseable, AfterEachCallback {
     static final long MOVIE_ID = 1;
 
     final FakeWorld world = FakeWorld.seeded();
-    final List<GatewayCallback.Event> sentWebhooks = new CopyOnWriteArrayList<>();
     final AtomicBoolean dbUp = new AtomicBoolean(true);
     final SliceKit slice;
     final UnitOfWork uow;
@@ -97,10 +94,7 @@ final class WebKit implements AutoCloseable, AfterEachCallback {
                 k.idempotency(),
                 world,
                 world,
-                event -> {
-                    sentWebhooks.add(event);
-                    return 200;
-                },
+                event -> 200,
                 k.live(),
                 dbUp::get,
                 new WebDeps.Settings(

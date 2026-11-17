@@ -26,8 +26,6 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class RecordGeneratorTest {
 
-    private static final String WEB = "dev.thiru.bms.web.";
-
     private static final String JOLT_PAGE = "in.jolt.Page$Result";
 
     /**
@@ -101,8 +99,8 @@ class RecordGeneratorTest {
         add(m, "Checkout", "dev.thiru.bms.features.booking.BookingDtos$CheckoutDto");
         add(m, "HoldRequest", "dev.thiru.bms.features.booking.BookingDtos$HoldRequest");
         add(m, "BookingRequest", "dev.thiru.bms.features.booking.BookingDtos$BookingRequest");
-        add(m, "WebhookEvent", WEB + "PaymentModule$WebhookBody");
-        add(m, "CompleteRequest", WEB + "PaymentModule$CompleteRequest");
+        add(m, "WebhookEvent", "dev.thiru.bms.features.payments.PaymentDtos$WebhookBody");
+        add(m, "CompleteRequest", "dev.thiru.bms.features.payments.PaymentDtos$CompleteRequest");
         for (String r :
                 List.of(
                         "CityRequest",
