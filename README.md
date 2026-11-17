@@ -6,9 +6,10 @@ Status: integrated. All lanes are merged and wired in `Main`; an end-to-end test
 
 ## Run
 
-Requires JDK 21+ and Maven. Jolt resolves from [JitPack](https://jitpack.io).
+Requires JDK 21+ and Maven. Jolt resolves from [JitPack](https://jitpack.io). The web UI also needs Node 20+ to build; the Java build and tests do not.
 
 ```bash
+(cd web && npm ci && npm run build)   # React UI to web/dist, which the server serves
 mvn -B verify          # tests, formatting check, coverage report in target/site/jacoco
 JWT_SECRET=$(openssl rand -hex 32) WEBHOOK_SECRET=$(openssl rand -hex 32) \
   ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=change-me-please-123 \
@@ -16,7 +17,22 @@ JWT_SECRET=$(openssl rand -hex 32) WEBHOOK_SECRET=$(openssl rand -hex 32) \
 curl http://127.0.0.1:8080/api/health
 ```
 
-`JWT_SECRET` and `WEBHOOK_SECRET` (at least 32 bytes each) are required; startup fails fast without them. The server binds to loopback on `PORT` (default 8080). Set `JOLT_BIND_ADDRESS=0.0.0.0` to expose it. The full environment variable table is in [SPEC section 9](docs/SPEC.md#9-non-functional). Until Jolt serves from the classpath (jolt#68), `STATIC_DIR` and `VIEWS_DIR` default to the source tree, so run from the repository root.
+`JWT_SECRET` and `WEBHOOK_SECRET` (at least 32 bytes each) are required; startup fails fast without them. The server binds to loopback on `PORT` (default 8080). Set `JOLT_BIND_ADDRESS=0.0.0.0` to expose it. The full environment variable table is in [SPEC section 9](docs/SPEC.md#9-non-functional). Until Jolt serves from the classpath (jolt#68), `STATIC_DIR` (default `web/dist`) and `VIEWS_DIR` (default `src/main/resources/views`) are paths relative to the working directory, so run from the repository root.
+
+### Web UI
+
+The UI is a React 18 single-page app (Vite, strict TypeScript) in `web/`, branded Houselights. It is built to static files and served by the Java server on the same origin, so there is no CORS and no Node process in production.
+
+```bash
+cd web
+npm ci
+npm run dev     # http://localhost:5173, proxies /api and /mock-gateway to http://localhost:8080
+npm run lint    # ESLint and tsc
+npm test        # Vitest and Testing Library
+npm run build   # web/dist
+```
+
+For `npm run dev`, start the Java server on port 8080 first (see above). The dev server proxies the backend paths, so the refresh cookie, CSRF checks and the mock gateway behave as in production. Hashed files under `/assets/` are cached for a year; `index.html` is revalidated on every load.
 
 ### Docker
 
@@ -26,7 +42,7 @@ docker run -p 8080:8080 -v bms-data:/data \
   -e JWT_SECRET=... -e WEBHOOK_SECRET=... bookmyshow-jolt
 ```
 
-The image runs as a non-root user, keeps the database in the `/data` volume, binds `0.0.0.0` and has a `HEALTHCHECK` on `/api/health`.
+The image builds the UI in a `node:20-alpine` stage, runs as a non-root user, keeps the database in the `/data` volume, binds `0.0.0.0` and has a `HEALTHCHECK` on `/api/health`.
 
 ### Render
 
@@ -48,8 +64,12 @@ src/main/java/dev/thiru/bms/
   Main.java          composition root
 src/main/resources/
   db/migrations/     SQL schema and seed
-  static/            vanilla JS web UI (no build step)
   views/             server-rendered pages (ticket, mock gateway)
+web/
+  src/api/           typed API client (token in memory, refresh, idempotency, problem+json)
+  src/pages/         audience pages, admin area, theatre owner dashboard
+  src/components/    seat map, posters, ticket, layout editor, reports
+  public/            favicon and /css/app.css for the server-rendered views
 ```
 
 `ArchitectureTest` enforces the layer rules. Rules for contributors and agents are in [AGENTS.md](AGENTS.md).
