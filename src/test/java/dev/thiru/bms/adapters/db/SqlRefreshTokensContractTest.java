@@ -1,7 +1,7 @@
 package dev.thiru.bms.adapters.db;
 
 import dev.thiru.bms.contract.RefreshTokenStoreContract;
-import dev.thiru.bms.domain.port.RefreshTokenStore;
+import dev.thiru.bms.ports.RefreshTokenStore;
 import in.jolt.db.Db;
 import java.nio.file.Path;
 import java.time.Duration;

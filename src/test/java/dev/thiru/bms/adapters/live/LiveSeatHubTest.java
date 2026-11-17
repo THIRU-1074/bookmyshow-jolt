@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.thiru.bms.domain.SeatId;
-import dev.thiru.bms.domain.port.LiveSeats;
-import dev.thiru.bms.domain.port.SeatEvent;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.ports.LiveSeats;
+import dev.thiru.bms.ports.SeatEvent;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;

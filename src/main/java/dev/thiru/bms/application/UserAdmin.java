@@ -1,11 +1,11 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.Page;
-import dev.thiru.bms.domain.Role;
-import dev.thiru.bms.domain.User;
 import dev.thiru.bms.domain.port.Repositories;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.Page;
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;

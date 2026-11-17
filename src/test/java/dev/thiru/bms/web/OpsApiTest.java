@@ -90,7 +90,7 @@ class OpsApiTest {
 
     @Test
     void problemMappingCoversEveryDomainCode() {
-        for (var code : dev.thiru.bms.domain.DomainException.Code.values()) {
+        for (var code : dev.thiru.bms.kernel.DomainException.Code.values()) {
             int status = Problems.statusOf(code);
             assertEquals(true, status >= 400 && status < 500, code.name());
         }

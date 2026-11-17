@@ -1,5 +1,8 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.booking;
 
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.catalog.SeatLayout;
+import dev.thiru.bms.kernel.catalog.Show;
 import java.util.List;
 
 /** A seat on a booking with the category and price (paise) frozen at hold time. */

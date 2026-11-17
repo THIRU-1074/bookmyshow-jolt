@@ -1,16 +1,16 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.Cinema;
-import dev.thiru.bms.domain.City;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.Movie;
-import dev.thiru.bms.domain.Screen;
-import dev.thiru.bms.domain.SeatLayout;
-import dev.thiru.bms.domain.Show;
-import dev.thiru.bms.domain.ShowFormat;
-import dev.thiru.bms.domain.ShowStatus;
 import dev.thiru.bms.domain.port.Repositories;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.catalog.Cinema;
+import dev.thiru.bms.kernel.catalog.City;
+import dev.thiru.bms.kernel.catalog.Movie;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.SeatLayout;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.kernel.catalog.ShowFormat;
+import dev.thiru.bms.kernel.catalog.ShowStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;

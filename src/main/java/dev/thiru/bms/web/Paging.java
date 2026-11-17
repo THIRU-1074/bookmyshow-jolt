@@ -32,7 +32,7 @@ final class Paging {
     }
 
     /** The domain page as Jolt's JSON envelope, items mapped to their DTOs. */
-    static <S, T> Page.Result<T> result(dev.thiru.bms.domain.Page<S> page, Function<S, T> mapper) {
+    static <S, T> Page.Result<T> result(dev.thiru.bms.kernel.Page<S> page, Function<S, T> mapper) {
         return new Page(page.page(), page.size())
                 .result(page.items().stream().map(mapper).toList(), page.total());
     }

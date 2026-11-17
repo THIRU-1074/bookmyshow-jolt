@@ -1,9 +1,9 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.CatalogQueries;
-import dev.thiru.bms.domain.Certificate;
-import dev.thiru.bms.domain.ShowFormat;
 import dev.thiru.bms.domain.port.CatalogRepositories.MovieQuery;
+import dev.thiru.bms.kernel.catalog.Certificate;
+import dev.thiru.bms.kernel.catalog.ShowFormat;
 import in.jolt.Page;
 import in.jolt.Request;
 import in.jolt.Response;

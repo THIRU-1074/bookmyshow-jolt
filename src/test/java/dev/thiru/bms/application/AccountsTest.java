@@ -6,11 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.DomainException.Code;
-import dev.thiru.bms.domain.Role;
-import dev.thiru.bms.domain.User;
-import dev.thiru.bms.domain.port.PasswordHasher;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.DomainException.Code;
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
+import dev.thiru.bms.ports.PasswordHasher;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

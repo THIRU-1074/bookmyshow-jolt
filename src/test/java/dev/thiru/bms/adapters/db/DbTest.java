@@ -1,8 +1,8 @@
 package dev.thiru.bms.adapters.db;
 
-import dev.thiru.bms.domain.Role;
-import dev.thiru.bms.domain.User;
 import dev.thiru.bms.domain.port.Repositories;
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
 import in.jolt.db.Db;
 import java.nio.file.Path;
 import java.time.Instant;

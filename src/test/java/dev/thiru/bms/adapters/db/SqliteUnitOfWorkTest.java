@@ -3,8 +3,8 @@ package dev.thiru.bms.adapters.db;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.Show;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.catalog.Show;
 import org.junit.jupiter.api.Test;
 
 class SqliteUnitOfWorkTest extends DbTest {

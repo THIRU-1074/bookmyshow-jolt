@@ -1,10 +1,10 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.Payment;
-import dev.thiru.bms.domain.PaymentStatus;
-import dev.thiru.bms.domain.port.IdGenerator;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.payment.Payment;
+import dev.thiru.bms.kernel.payment.PaymentStatus;
+import dev.thiru.bms.ports.Ids;
 import java.time.Clock;
 
 /**
@@ -28,10 +28,10 @@ public final class MockGatewayPayments {
 
     private final UnitOfWork uow;
     private final Sender sender;
-    private final IdGenerator ids;
+    private final Ids ids;
     private final Clock clock;
 
-    public MockGatewayPayments(UnitOfWork uow, Sender sender, IdGenerator ids, Clock clock) {
+    public MockGatewayPayments(UnitOfWork uow, Sender sender, Ids ids, Clock clock) {
         this.uow = uow;
         this.sender = sender;
         this.ids = ids;

@@ -6,13 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.thiru.bms.application.CreateBooking;
 import dev.thiru.bms.application.CreateHold;
 import dev.thiru.bms.application.ExpireSweep;
-import dev.thiru.bms.domain.BookingPolicy;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.Screen;
-import dev.thiru.bms.domain.SeatId;
-import dev.thiru.bms.domain.Show;
-import dev.thiru.bms.domain.port.IdGenerator;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.booking.BookingPolicy;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.ports.Ids;
+import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneOffset;
@@ -40,7 +40,7 @@ class ConcurrentBuyersTest extends DbTest {
     // Few seats, many buyers: almost every request overlaps another.
     private static final int POOL = 12;
 
-    private static final class Ids implements IdGenerator {
+    private static final class SequentialIds implements Ids {
         public String newId() {
             return UUID.randomUUID().toString();
         }
@@ -58,10 +58,10 @@ class ConcurrentBuyersTest extends DbTest {
         List<SeatId> pool = screen.layout().bookableSeats().subList(0, POOL);
 
         Clock clock = Clock.fixed(show.startsAt().minus(Duration.ofHours(2)), ZoneOffset.UTC);
-        SeatEventPublisher quiet = e -> {};
+        SeatEvents quiet = e -> {};
         BookingPolicy policy = BookingPolicy.defaults();
-        CreateHold createHold = new CreateHold(uow, quiet, new Ids(), clock, policy);
-        CreateBooking createBooking = new CreateBooking(uow, quiet, new Ids(), clock);
+        CreateHold createHold = new CreateHold(uow, quiet, new SequentialIds(), clock, policy);
+        CreateBooking createBooking = new CreateBooking(uow, quiet, new SequentialIds(), clock);
 
         List<Long> users = new ArrayList<>();
         for (int i = 0; i < BUYERS; i++) {

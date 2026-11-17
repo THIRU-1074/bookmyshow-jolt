@@ -1,4 +1,6 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.catalog;
+
+import dev.thiru.bms.kernel.DomainException;
 
 /** An auditorium with a validated seat plan. */
 public record Screen(long id, long cinemaId, String name, SeatLayout layout) {

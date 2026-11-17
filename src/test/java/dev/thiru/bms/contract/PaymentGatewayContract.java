@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.thiru.bms.domain.port.PaymentGateway;
-import dev.thiru.bms.domain.port.PaymentGateway.CheckoutSession;
+import dev.thiru.bms.ports.PaymentGateway;
+import dev.thiru.bms.ports.PaymentGateway.CheckoutSession;
 import java.net.URI;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

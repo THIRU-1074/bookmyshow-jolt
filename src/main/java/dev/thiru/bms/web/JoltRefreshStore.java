@@ -1,6 +1,6 @@
 package dev.thiru.bms.web;
 
-import dev.thiru.bms.domain.port.RefreshTokenStore;
+import dev.thiru.bms.ports.RefreshTokenStore;
 import in.jolt.auth.RefreshStore;
 import java.util.Set;
 

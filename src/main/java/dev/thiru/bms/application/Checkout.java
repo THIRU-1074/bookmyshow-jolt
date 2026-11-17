@@ -1,14 +1,14 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.BookingPolicy;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.Payment;
-import dev.thiru.bms.domain.port.IdGenerator;
-import dev.thiru.bms.domain.port.PaymentGateway;
 import dev.thiru.bms.domain.port.Repositories;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingPolicy;
+import dev.thiru.bms.kernel.payment.Payment;
+import dev.thiru.bms.ports.Ids;
+import dev.thiru.bms.ports.PaymentGateway;
+import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Instant;
 
@@ -24,8 +24,8 @@ public final class Checkout {
 
     private final UnitOfWork uow;
     private final PaymentGateway gateway;
-    private final SeatEventPublisher publisher;
-    private final IdGenerator ids;
+    private final SeatEvents publisher;
+    private final Ids ids;
     private final Clock clock;
     private final BookingPolicy policy;
 
@@ -33,8 +33,8 @@ public final class Checkout {
     public Checkout(
             UnitOfWork uow,
             PaymentGateway gateway,
-            SeatEventPublisher publisher,
-            IdGenerator ids,
+            SeatEvents publisher,
+            Ids ids,
             Clock clock,
             BookingPolicy policy) {
         this.uow = uow;

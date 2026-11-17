@@ -1,2 +1,2 @@
-/** Random identifiers behind the domain {@code IdGenerator} port. */
+/** Random identifiers behind the {@code ports.Ids} port. */
 package dev.thiru.bms.adapters.ids;

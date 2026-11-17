@@ -1,5 +1,7 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.catalog;
 
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.SeatId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;

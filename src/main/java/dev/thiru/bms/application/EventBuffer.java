@@ -1,8 +1,8 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.SeatId;
-import dev.thiru.bms.domain.port.SeatEvent;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.ports.SeatEvent;
+import dev.thiru.bms.ports.SeatEvents;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,7 +24,7 @@ final class EventBuffer {
     }
 
     /** A failing subscriber must not undo or fail a committed booking. */
-    void publishTo(SeatEventPublisher publisher) {
+    void publishTo(SeatEvents publisher) {
         for (SeatEvent e : events) {
             try {
                 publisher.publish(e);

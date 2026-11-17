@@ -1,9 +1,9 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.contract.LiveSeatsContract;
-import dev.thiru.bms.domain.SeatId;
-import dev.thiru.bms.domain.port.LiveSeats;
-import dev.thiru.bms.domain.port.SeatEvent;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.ports.LiveSeats;
+import dev.thiru.bms.ports.SeatEvent;
 import java.util.stream.Collectors;
 
 /**

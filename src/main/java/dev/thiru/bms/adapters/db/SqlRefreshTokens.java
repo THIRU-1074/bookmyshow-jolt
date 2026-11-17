@@ -1,6 +1,6 @@
 package dev.thiru.bms.adapters.db;
 
-import dev.thiru.bms.domain.port.RefreshTokenStore;
+import dev.thiru.bms.ports.RefreshTokenStore;
 import in.jolt.db.Db;
 import in.jolt.db.RowMapper;
 import in.jolt.db.TxMode;

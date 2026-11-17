@@ -1,12 +1,12 @@
 package dev.thiru.bms.adapters.ids;
 
-import dev.thiru.bms.domain.port.IdGenerator;
+import dev.thiru.bms.ports.Ids;
 import java.security.SecureRandom;
 import java.util.UUID;
 import java.util.random.RandomGenerator;
 
 /** Unguessable ids (SPEC 2): random UUIDv4 strings and a {@link SecureRandom} for codes. */
-public final class SecureIds implements IdGenerator {
+public final class SecureIds implements Ids {
 
     private final SecureRandom random = new SecureRandom();
 

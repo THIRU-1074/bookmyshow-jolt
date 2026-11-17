@@ -1,4 +1,4 @@
-package dev.thiru.bms.domain.port;
+package dev.thiru.bms.ports;
 
 import java.time.Instant;
 import java.util.Optional;

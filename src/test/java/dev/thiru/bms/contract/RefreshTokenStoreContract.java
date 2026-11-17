@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.thiru.bms.domain.port.RefreshTokenStore;
-import dev.thiru.bms.domain.port.RefreshTokenStore.Entry;
+import dev.thiru.bms.ports.RefreshTokenStore;
+import dev.thiru.bms.ports.RefreshTokenStore.Entry;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;

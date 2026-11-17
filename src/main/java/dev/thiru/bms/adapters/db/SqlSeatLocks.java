@@ -1,9 +1,9 @@
 package dev.thiru.bms.adapters.db;
 
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.SeatId;
-import dev.thiru.bms.domain.port.SeatLock;
 import dev.thiru.bms.domain.port.SeatLockRepository;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.booking.SeatLock;
 import in.jolt.db.RowMapper;
 import in.jolt.db.Sql;
 import java.time.Instant;

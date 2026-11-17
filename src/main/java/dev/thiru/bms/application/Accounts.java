@@ -1,10 +1,10 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.Role;
-import dev.thiru.bms.domain.User;
-import dev.thiru.bms.domain.port.PasswordHasher;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
+import dev.thiru.bms.ports.PasswordHasher;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.Locale;

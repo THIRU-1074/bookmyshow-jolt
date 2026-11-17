@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import dev.thiru.bms.application.ProcessPaymentWebhook;
-import dev.thiru.bms.domain.port.PaymentGateway;
+import dev.thiru.bms.ports.PaymentGateway;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;

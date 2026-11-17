@@ -4,11 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.BookingStatus;
-import dev.thiru.bms.domain.HoldStatus;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.port.SeatEvent;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingStatus;
+import dev.thiru.bms.kernel.booking.HoldStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.ports.SeatEvent;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.BookingStatus;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.DomainException.Code;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.DomainException.Code;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingStatus;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;

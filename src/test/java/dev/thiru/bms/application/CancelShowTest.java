@@ -5,13 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.BookingStatus;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.HoldStatus;
-import dev.thiru.bms.domain.PaymentStatus;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.ShowStatus;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingStatus;
+import dev.thiru.bms.kernel.booking.HoldStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.kernel.catalog.ShowStatus;
+import dev.thiru.bms.kernel.payment.PaymentStatus;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 

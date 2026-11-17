@@ -1,7 +1,7 @@
 package dev.thiru.bms.adapters.payment;
 
 import dev.thiru.bms.contract.PaymentGatewayContract;
-import dev.thiru.bms.domain.port.PaymentGateway;
+import dev.thiru.bms.ports.PaymentGateway;
 import java.net.URI;
 
 /** The production mock gateway, held to the gateway contract. */

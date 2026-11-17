@@ -5,12 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.HoldStatus;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.SeatId;
 import dev.thiru.bms.domain.port.Repositories;
-import dev.thiru.bms.domain.port.SeatLock;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.booking.HoldStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.kernel.booking.SeatLock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -184,14 +184,14 @@ class SeatLockRepositoryTest extends DbTest {
                 r -> {
                     r.bookings()
                             .insert(
-                                    dev.thiru.bms.domain.Booking.create(
+                                    dev.thiru.bms.kernel.booking.Booking.create(
                                             bookingId,
                                             "BK00000000",
                                             user,
                                             show,
                                             "h1",
                                             List.of(
-                                                    new dev.thiru.bms.domain.BookingSeat(
+                                                    new dev.thiru.bms.kernel.booking.BookingSeat(
                                                             seat("G1"), "CLASSIC", 10000)),
                                             NOW,
                                             EXPIRES));

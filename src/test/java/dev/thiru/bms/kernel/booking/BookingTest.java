@@ -1,10 +1,12 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.booking;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.SeatId;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -12,13 +14,13 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import org.junit.jupiter.api.Test;
 
-class BookingTest {
+public class BookingTest {
 
     static final Instant NOW = Instant.parse("2026-11-19T10:00:00Z");
     static final Instant SHOW = NOW.plus(Duration.ofDays(3));
     static final BookingPolicy POLICY = BookingPolicy.defaults();
 
-    static Booking booking(BookingStatus status) {
+    public static Booking booking(BookingStatus status) {
         return new Booking(
                 "b1",
                 "BK0123ABCD",

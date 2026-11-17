@@ -1,7 +1,7 @@
 package dev.thiru.bms.adapters.auth;
 
 import dev.thiru.bms.contract.PasswordHasherContract;
-import dev.thiru.bms.domain.port.PasswordHasher;
+import dev.thiru.bms.ports.PasswordHasher;
 
 /** The production PBKDF2 hasher, held to the hasher contract. */
 class Pbkdf2PasswordHasherContractTest extends PasswordHasherContract {

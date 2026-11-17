@@ -1,14 +1,14 @@
 package dev.thiru.bms.domain.port;
 
-import dev.thiru.bms.domain.Cinema;
-import dev.thiru.bms.domain.City;
-import dev.thiru.bms.domain.Movie;
-import dev.thiru.bms.domain.Page;
-import dev.thiru.bms.domain.Role;
-import dev.thiru.bms.domain.Screen;
-import dev.thiru.bms.domain.Show;
-import dev.thiru.bms.domain.ShowStatus;
-import dev.thiru.bms.domain.User;
+import dev.thiru.bms.kernel.Page;
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
+import dev.thiru.bms.kernel.catalog.Cinema;
+import dev.thiru.bms.kernel.catalog.City;
+import dev.thiru.bms.kernel.catalog.Movie;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.kernel.catalog.ShowStatus;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

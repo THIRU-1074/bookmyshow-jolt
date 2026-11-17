@@ -1,8 +1,8 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.CatalogQueries;
-import dev.thiru.bms.domain.ShowStatus;
-import dev.thiru.bms.domain.port.LiveSeats;
+import dev.thiru.bms.kernel.catalog.ShowStatus;
+import dev.thiru.bms.ports.LiveSeats;
 import in.jolt.EventStream;
 import in.jolt.JsonMapper;
 import in.jolt.Request;

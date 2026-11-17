@@ -1,4 +1,6 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.catalog;
+
+import dev.thiru.bms.kernel.DomainException;
 
 /**
  * Projection format; the label is the wire and database value (enum names cannot start with a

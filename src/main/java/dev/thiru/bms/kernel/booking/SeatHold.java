@@ -1,5 +1,10 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.booking;
 
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.kernel.catalog.ShowStatus;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.LinkedHashMap;

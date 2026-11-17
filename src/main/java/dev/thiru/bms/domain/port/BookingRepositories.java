@@ -1,11 +1,11 @@
 package dev.thiru.bms.domain.port;
 
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.BookingStatus;
-import dev.thiru.bms.domain.Page;
-import dev.thiru.bms.domain.Payment;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.User;
+import dev.thiru.bms.kernel.Page;
+import dev.thiru.bms.kernel.account.User;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.kernel.payment.Payment;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;

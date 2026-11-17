@@ -7,7 +7,7 @@ import static dev.thiru.bms.web.AdminModule.ok;
 import dev.thiru.bms.application.AdminCatalog;
 import dev.thiru.bms.application.AdminReports;
 import dev.thiru.bms.application.CancelShow;
-import dev.thiru.bms.domain.ShowFormat;
+import dev.thiru.bms.kernel.catalog.ShowFormat;
 import in.jolt.Middleware;
 import in.jolt.Page;
 import in.jolt.Request;

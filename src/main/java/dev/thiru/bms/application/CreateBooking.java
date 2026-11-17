@@ -1,18 +1,18 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.BookingCode;
-import dev.thiru.bms.domain.BookingSeat;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.HoldStatus;
-import dev.thiru.bms.domain.Screen;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.Show;
-import dev.thiru.bms.domain.port.IdGenerator;
 import dev.thiru.bms.domain.port.Repositories;
-import dev.thiru.bms.domain.port.SeatEvent;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingCode;
+import dev.thiru.bms.kernel.booking.BookingSeat;
+import dev.thiru.bms.kernel.booking.HoldStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.ports.Ids;
+import dev.thiru.bms.ports.SeatEvent;
+import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -23,12 +23,11 @@ public final class CreateBooking {
     private static final int CODE_ATTEMPTS = 10;
 
     private final UnitOfWork uow;
-    private final SeatEventPublisher publisher;
-    private final IdGenerator ids;
+    private final SeatEvents publisher;
+    private final Ids ids;
     private final Clock clock;
 
-    public CreateBooking(
-            UnitOfWork uow, SeatEventPublisher publisher, IdGenerator ids, Clock clock) {
+    public CreateBooking(UnitOfWork uow, SeatEvents publisher, Ids ids, Clock clock) {
         this.uow = uow;
         this.publisher = publisher;
         this.ids = ids;

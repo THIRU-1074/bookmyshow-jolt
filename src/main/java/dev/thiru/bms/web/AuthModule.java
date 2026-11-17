@@ -1,7 +1,7 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.Accounts;
-import dev.thiru.bms.domain.User;
+import dev.thiru.bms.kernel.account.User;
 import in.jolt.HttpException;
 import in.jolt.Request;
 import in.jolt.Response;

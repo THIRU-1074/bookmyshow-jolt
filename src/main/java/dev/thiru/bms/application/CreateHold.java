@@ -1,16 +1,16 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.BookingPolicy;
-import dev.thiru.bms.domain.BookingSeat;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.HoldStatus;
-import dev.thiru.bms.domain.Screen;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.Show;
-import dev.thiru.bms.domain.port.IdGenerator;
-import dev.thiru.bms.domain.port.SeatEvent;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.booking.BookingPolicy;
+import dev.thiru.bms.kernel.booking.BookingSeat;
+import dev.thiru.bms.kernel.booking.HoldStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.ports.Ids;
+import dev.thiru.bms.ports.SeatEvent;
+import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -22,17 +22,13 @@ public final class CreateHold {
     public record Result(SeatHold hold, long amount, String currency) {}
 
     private final UnitOfWork uow;
-    private final SeatEventPublisher publisher;
-    private final IdGenerator ids;
+    private final SeatEvents publisher;
+    private final Ids ids;
     private final Clock clock;
     private final BookingPolicy policy;
 
     public CreateHold(
-            UnitOfWork uow,
-            SeatEventPublisher publisher,
-            IdGenerator ids,
-            Clock clock,
-            BookingPolicy policy) {
+            UnitOfWork uow, SeatEvents publisher, Ids ids, Clock clock, BookingPolicy policy) {
         this.uow = uow;
         this.publisher = publisher;
         this.ids = ids;

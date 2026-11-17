@@ -5,11 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.DomainException.Code;
-import dev.thiru.bms.domain.HoldStatus;
-import dev.thiru.bms.domain.SeatId;
-import dev.thiru.bms.domain.port.SeatEvent;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.DomainException.Code;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.booking.HoldStatus;
+import dev.thiru.bms.ports.SeatEvent;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;

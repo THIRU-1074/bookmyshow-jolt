@@ -1,7 +1,7 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.CinemaScope;
-import dev.thiru.bms.domain.Role;
+import dev.thiru.bms.kernel.account.Role;
 import in.jolt.Request;
 import java.util.Collection;
 import java.util.EnumSet;

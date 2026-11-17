@@ -1,4 +1,4 @@
-package dev.thiru.bms.domain.port;
+package dev.thiru.bms.ports;
 
 /** Password hashing stays a port so the domain never depends on a crypto library. */
 public interface PasswordHasher {

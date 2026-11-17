@@ -1,8 +1,8 @@
 package dev.thiru.bms.adapters.live;
 
 import dev.thiru.bms.contract.LiveSeatsContract;
-import dev.thiru.bms.domain.port.LiveSeats;
-import dev.thiru.bms.domain.port.SeatEvent;
+import dev.thiru.bms.ports.LiveSeats;
+import dev.thiru.bms.ports.SeatEvent;
 
 /** The production hub: events go in through the publisher side and come out as SSE messages. */
 class LiveSeatHubContractTest extends LiveSeatsContract {

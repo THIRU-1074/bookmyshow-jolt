@@ -1,6 +1,6 @@
 package dev.thiru.bms;
 
-import dev.thiru.bms.domain.BookingPolicy;
+import dev.thiru.bms.kernel.booking.BookingPolicy;
 import in.jolt.Config;
 import in.jolt.ConfigException;
 import java.net.URI;

@@ -1,6 +1,6 @@
 package dev.thiru.bms.adapters.auth;
 
-import dev.thiru.bms.domain.port.PasswordHasher;
+import dev.thiru.bms.ports.PasswordHasher;
 
 /** The domain hashing port on Jolt's PBKDF2 hasher (salted, 210 000 iterations by default). */
 public final class Pbkdf2PasswordHasher implements PasswordHasher {

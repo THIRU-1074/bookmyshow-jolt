@@ -1,5 +1,6 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.payment;
 
+import dev.thiru.bms.kernel.booking.Booking;
 import java.time.Instant;
 
 /**

@@ -1,4 +1,4 @@
-package dev.thiru.bms.web;
+package dev.thiru.bms.kernel;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

@@ -1,6 +1,7 @@
 package dev.thiru.bms.domain.port;
 
-import dev.thiru.bms.domain.SeatId;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.booking.SeatLock;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;

@@ -1,5 +1,6 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.catalog;
 
+import dev.thiru.bms.kernel.DomainException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;

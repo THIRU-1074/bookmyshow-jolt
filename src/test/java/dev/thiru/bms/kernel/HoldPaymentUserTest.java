@@ -1,10 +1,26 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingPolicy;
+import dev.thiru.bms.kernel.booking.BookingStatus;
+import dev.thiru.bms.kernel.booking.BookingTest;
+import dev.thiru.bms.kernel.booking.HoldStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.kernel.catalog.Certificate;
+import dev.thiru.bms.kernel.catalog.Movie;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.SeatLayoutTest;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.kernel.catalog.ShowFormat;
+import dev.thiru.bms.kernel.payment.Payment;
+import dev.thiru.bms.kernel.payment.PaymentStatus;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;

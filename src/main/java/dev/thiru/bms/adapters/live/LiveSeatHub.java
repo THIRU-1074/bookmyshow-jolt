@@ -1,9 +1,9 @@
 package dev.thiru.bms.adapters.live;
 
-import dev.thiru.bms.domain.SeatId;
-import dev.thiru.bms.domain.port.LiveSeats;
-import dev.thiru.bms.domain.port.SeatEvent;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.ports.LiveSeats;
+import dev.thiru.bms.ports.SeatEvent;
+import dev.thiru.bms.ports.SeatEvents;
 import in.jolt.AppMetrics;
 import in.jolt.HttpException;
 import in.jolt.Hub;
@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
  * <p>TODO(jolt#83): serve with {@code hub.sse} and drop the stream tracking once Hub can end a
  * topic's subscribers and send a first event.
  */
-public final class LiveSeatHub implements LiveSeats, SeatEventPublisher {
+public final class LiveSeatHub implements LiveSeats, SeatEvents {
 
     /** Messages a stream holds for the route; the hub's own queue absorbs bursts behind it. */
     static final int HANDOFF = 16;

@@ -3,9 +3,9 @@ package dev.thiru.bms.application;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.domain.DomainException.Code;
-import dev.thiru.bms.domain.Role;
-import dev.thiru.bms.domain.User;
+import dev.thiru.bms.kernel.DomainException.Code;
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;

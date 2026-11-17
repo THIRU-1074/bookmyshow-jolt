@@ -1,10 +1,10 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.SeatId;
 import dev.thiru.bms.domain.port.Repositories;
-import dev.thiru.bms.domain.port.SeatEvent;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.ports.SeatEvent;
 import java.time.Instant;
 import java.util.List;
 import java.util.function.UnaryOperator;

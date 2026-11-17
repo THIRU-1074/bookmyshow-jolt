@@ -1,17 +1,17 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.BookingStatus;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.Payment;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.Show;
-import dev.thiru.bms.domain.ShowStatus;
-import dev.thiru.bms.domain.port.PaymentGateway;
 import dev.thiru.bms.domain.port.Repositories;
-import dev.thiru.bms.domain.port.SeatEvent;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.kernel.catalog.ShowStatus;
+import dev.thiru.bms.kernel.payment.Payment;
+import dev.thiru.bms.ports.PaymentGateway;
+import dev.thiru.bms.ports.SeatEvent;
+import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Instant;
 
@@ -25,11 +25,10 @@ public final class CancelShow {
 
     private final UnitOfWork uow;
     private final PaymentGateway gateway;
-    private final SeatEventPublisher publisher;
+    private final SeatEvents publisher;
     private final Clock clock;
 
-    public CancelShow(
-            UnitOfWork uow, PaymentGateway gateway, SeatEventPublisher publisher, Clock clock) {
+    public CancelShow(UnitOfWork uow, PaymentGateway gateway, SeatEvents publisher, Clock clock) {
         this.uow = uow;
         this.gateway = gateway;
         this.publisher = publisher;

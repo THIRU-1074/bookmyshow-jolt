@@ -1,4 +1,4 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.account;
 
 /**
  * The three roles of SPEC 3. Every account holds {@link #AUDIENCE}; {@link #THEATRE_OWNER} and

@@ -1,10 +1,10 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.port.SeatEvent;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.ports.SeatEvent;
+import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Instant;
 
@@ -19,10 +19,10 @@ public final class ExpireSweep {
     public record Result(int holds, int bookings) {}
 
     private final UnitOfWork uow;
-    private final SeatEventPublisher publisher;
+    private final SeatEvents publisher;
     private final Clock clock;
 
-    public ExpireSweep(UnitOfWork uow, SeatEventPublisher publisher, Clock clock) {
+    public ExpireSweep(UnitOfWork uow, SeatEvents publisher, Clock clock) {
         this.uow = uow;
         this.publisher = publisher;
         this.clock = clock;

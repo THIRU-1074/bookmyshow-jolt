@@ -1,4 +1,4 @@
-package dev.thiru.bms.domain.port;
+package dev.thiru.bms.ports;
 
 /** Outbound payment provider. Inbound results arrive as webhooks, not through this port. */
 public interface PaymentGateway {

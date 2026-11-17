@@ -1,37 +1,37 @@
 package dev.thiru.bms.application.fakes;
 
-import dev.thiru.bms.domain.Booking;
-import dev.thiru.bms.domain.BookingPolicy;
-import dev.thiru.bms.domain.BookingStatus;
-import dev.thiru.bms.domain.Certificate;
-import dev.thiru.bms.domain.Cinema;
-import dev.thiru.bms.domain.City;
-import dev.thiru.bms.domain.DomainException;
-import dev.thiru.bms.domain.HoldStatus;
-import dev.thiru.bms.domain.Movie;
-import dev.thiru.bms.domain.Page;
-import dev.thiru.bms.domain.Payment;
-import dev.thiru.bms.domain.PaymentStatus;
-import dev.thiru.bms.domain.Role;
-import dev.thiru.bms.domain.Screen;
-import dev.thiru.bms.domain.SeatHold;
-import dev.thiru.bms.domain.SeatId;
-import dev.thiru.bms.domain.SeatLayout;
-import dev.thiru.bms.domain.Show;
-import dev.thiru.bms.domain.ShowFormat;
-import dev.thiru.bms.domain.ShowStatus;
-import dev.thiru.bms.domain.User;
 import dev.thiru.bms.domain.port.AdminRepositories;
 import dev.thiru.bms.domain.port.BookingRepositories;
 import dev.thiru.bms.domain.port.CatalogRepositories;
-import dev.thiru.bms.domain.port.IdGenerator;
-import dev.thiru.bms.domain.port.PaymentGateway;
 import dev.thiru.bms.domain.port.Repositories;
-import dev.thiru.bms.domain.port.SeatEvent;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
-import dev.thiru.bms.domain.port.SeatLock;
 import dev.thiru.bms.domain.port.SeatLockRepository;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.DomainException;
+import dev.thiru.bms.kernel.Page;
+import dev.thiru.bms.kernel.SeatId;
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
+import dev.thiru.bms.kernel.booking.Booking;
+import dev.thiru.bms.kernel.booking.BookingPolicy;
+import dev.thiru.bms.kernel.booking.BookingStatus;
+import dev.thiru.bms.kernel.booking.HoldStatus;
+import dev.thiru.bms.kernel.booking.SeatHold;
+import dev.thiru.bms.kernel.booking.SeatLock;
+import dev.thiru.bms.kernel.catalog.Certificate;
+import dev.thiru.bms.kernel.catalog.Cinema;
+import dev.thiru.bms.kernel.catalog.City;
+import dev.thiru.bms.kernel.catalog.Movie;
+import dev.thiru.bms.kernel.catalog.Screen;
+import dev.thiru.bms.kernel.catalog.SeatLayout;
+import dev.thiru.bms.kernel.catalog.Show;
+import dev.thiru.bms.kernel.catalog.ShowFormat;
+import dev.thiru.bms.kernel.catalog.ShowStatus;
+import dev.thiru.bms.kernel.payment.Payment;
+import dev.thiru.bms.kernel.payment.PaymentStatus;
+import dev.thiru.bms.ports.Ids;
+import dev.thiru.bms.ports.PaymentGateway;
+import dev.thiru.bms.ports.SeatEvent;
+import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -57,8 +57,7 @@ import java.util.random.RandomGenerator;
  * In-memory implementation of every port with snapshot rollback, so use cases run against real
  * transaction semantics (an exception undoes all writes) without a database.
  */
-public final class FakeWorld
-        implements UnitOfWork, Repositories, PaymentGateway, SeatEventPublisher, IdGenerator {
+public final class FakeWorld implements UnitOfWork, Repositories, PaymentGateway, SeatEvents, Ids {
 
     public static final Instant T0 = Instant.parse("2026-11-19T10:00:00Z");
     public static final long SHOW_ID = 9;
@@ -268,7 +267,7 @@ public final class FakeWorld
                 new SeatLock(showId, seat, holdId, null, SeatLock.State.HELD, expiresAt));
     }
 
-    // ---- IdGenerator ----
+    // ---- Ids ----
 
     @Override
     public String newId() {
@@ -300,7 +299,7 @@ public final class FakeWorld
         refunds.add(gatewayRef + ":" + amount);
     }
 
-    // ---- SeatEventPublisher ----
+    // ---- SeatEvents ----
 
     @Override
     public void publish(SeatEvent event) {

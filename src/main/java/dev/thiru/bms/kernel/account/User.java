@@ -1,5 +1,6 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.account;
 
+import dev.thiru.bms.kernel.DomainException;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Set;

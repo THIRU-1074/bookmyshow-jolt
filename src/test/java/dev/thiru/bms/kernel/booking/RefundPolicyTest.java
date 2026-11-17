@@ -1,8 +1,9 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.booking;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import dev.thiru.bms.kernel.DomainException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;

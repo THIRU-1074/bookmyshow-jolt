@@ -1,4 +1,6 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.catalog;
+
+import dev.thiru.bms.kernel.DomainException;
 
 /** A cinema in a city. Name uniqueness within the city is a repository concern. */
 public record Cinema(long id, String cityId, String name, String address) {

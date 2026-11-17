@@ -1,6 +1,6 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.DomainException;
+import dev.thiru.bms.kernel.DomainException;
 
 /**
  * Result of a transaction body that must commit its writes even though the caller gets an error

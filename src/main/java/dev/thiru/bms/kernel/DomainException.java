@@ -1,4 +1,4 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel;
 
 import java.util.List;
 import java.util.Map;

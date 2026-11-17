@@ -1,5 +1,6 @@
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel.catalog;
 
+import dev.thiru.bms.kernel.DomainException;
 import java.time.DateTimeException;
 import java.time.ZoneId;
 import java.util.regex.Pattern;

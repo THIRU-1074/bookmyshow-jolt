@@ -1,6 +1,6 @@
 package dev.thiru.bms.adapters.payment;
 
-import dev.thiru.bms.domain.port.PaymentGateway;
+import dev.thiru.bms.ports.PaymentGateway;
 import java.net.URI;
 
 /**

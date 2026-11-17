@@ -1,7 +1,7 @@
 package dev.thiru.bms.application;
 
-import dev.thiru.bms.domain.DomainException;
 import dev.thiru.bms.domain.port.Repositories;
+import dev.thiru.bms.kernel.DomainException;
 
 /**
  * Which cinemas a caller may manage (SPEC 3, roles and cinema ownership). An administrator has

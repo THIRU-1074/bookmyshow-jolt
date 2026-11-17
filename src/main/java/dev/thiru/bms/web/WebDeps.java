@@ -1,14 +1,14 @@
 package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.MockGatewayPayments;
-import dev.thiru.bms.domain.BookingPolicy;
-import dev.thiru.bms.domain.port.IdGenerator;
-import dev.thiru.bms.domain.port.LiveSeats;
-import dev.thiru.bms.domain.port.PasswordHasher;
-import dev.thiru.bms.domain.port.PaymentGateway;
-import dev.thiru.bms.domain.port.RefreshTokenStore;
-import dev.thiru.bms.domain.port.SeatEventPublisher;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import dev.thiru.bms.kernel.booking.BookingPolicy;
+import dev.thiru.bms.ports.Ids;
+import dev.thiru.bms.ports.LiveSeats;
+import dev.thiru.bms.ports.PasswordHasher;
+import dev.thiru.bms.ports.PaymentGateway;
+import dev.thiru.bms.ports.RefreshTokenStore;
+import dev.thiru.bms.ports.SeatEvents;
 import in.jolt.IdempotencyStore;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -35,12 +35,12 @@ public record WebDeps(
         UnitOfWork uow,
         Clock clock,
         BookingPolicy policy,
-        IdGenerator ids,
+        Ids ids,
         PasswordHasher hasher,
         RefreshTokenStore refreshTokens,
         IdempotencyStore idempotency,
         PaymentGateway gateway,
-        SeatEventPublisher publisher,
+        SeatEvents publisher,
         MockGatewayPayments.Sender mockSender,
         LiveSeats live,
         BooleanSupplier dbUp,

@@ -1,6 +1,6 @@
 package dev.thiru.bms.web;
 
-import dev.thiru.bms.domain.DomainException;
+import dev.thiru.bms.kernel.DomainException;
 import in.jolt.App;
 import in.jolt.HttpException;
 import in.jolt.HttpStatus;

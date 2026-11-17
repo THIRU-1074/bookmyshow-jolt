@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.domain.City;
+import dev.thiru.bms.kernel.catalog.City;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;

@@ -1,5 +1,7 @@
 /**
- * Entities, value objects, invariants and ports (repository and gateway interfaces). Imports only
- * the JDK, never {@code in.jolt}, {@code java.sql}, adapters or web.
+ * Pure shared rules and value objects: the booking, hold and payment state machines, refund and
+ * booking policy, catalog invariants, accounts and roles, {@code SeatId}, money in paise. Several
+ * feature slices use the same rule, so it lives here once. Imports only the JDK (enforced by {@code
+ * ArchitectureTest} and {@code TargetArchitectureTest}).
  */
-package dev.thiru.bms.domain;
+package dev.thiru.bms.kernel;

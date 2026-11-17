@@ -2,11 +2,11 @@ package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.fakes.FakeWorld;
-import dev.thiru.bms.domain.Role;
-import dev.thiru.bms.domain.User;
-import dev.thiru.bms.domain.port.LiveSeats;
-import dev.thiru.bms.domain.port.PasswordHasher;
-import dev.thiru.bms.domain.port.RefreshTokenStore;
+import dev.thiru.bms.kernel.account.Role;
+import dev.thiru.bms.kernel.account.User;
+import dev.thiru.bms.ports.LiveSeats;
+import dev.thiru.bms.ports.PasswordHasher;
+import dev.thiru.bms.ports.RefreshTokenStore;
 import in.jolt.App;
 import in.jolt.IdempotencyStore;
 import in.jolt.Jolt;
