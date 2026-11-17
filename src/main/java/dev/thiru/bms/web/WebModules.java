@@ -8,12 +8,26 @@ import dev.thiru.bms.features.booking.BookingRoutes;
 import dev.thiru.bms.features.catalog.CatalogRoutes;
 import dev.thiru.bms.features.live.LiveRoutes;
 import dev.thiru.bms.features.payments.PaymentRoutes;
+import dev.thiru.bms.kernel.booking.BookingPolicy;
+import dev.thiru.bms.ports.Db;
+import dev.thiru.bms.ports.GatewayCallback;
+import dev.thiru.bms.ports.Ids;
+import dev.thiru.bms.ports.LiveSeats;
+import dev.thiru.bms.ports.PasswordHasher;
+import dev.thiru.bms.ports.PaymentGateway;
+import dev.thiru.bms.ports.RefreshTokenStore;
+import dev.thiru.bms.ports.SeatEvents;
 import in.jolt.App;
+import in.jolt.IdempotencyStore;
 import in.jolt.JsonMapper;
 import in.jolt.Middleware;
 import in.jolt.Webhooks;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 /**
  * Entry point of the web layer. Main builds the {@link App} (with {@code problemJson(true)}), calls
@@ -22,7 +36,8 @@ import java.util.Map;
  *
  * <p>{@link #install} is the {@link HttpPipeline} (SPEC 9 middleware, RBAC gate, problems,
  * idempotency) followed by {@link #routes}, the route registration. Each line of {@link #routes}
- * mounts one route module; when a feature slice replaces a legacy module, that one line changes.
+ * mounts one slice's route module with the ports that slice uses. The web layer names only ports
+ * and functional interfaces; Main supplies the adapters behind {@link Ports}.
  */
 public final class WebModules {
 
@@ -31,29 +46,82 @@ public final class WebModules {
 
     private WebModules() {}
 
+    /**
+     * The ports the slices are built from.
+     *
+     * @param db the transaction seam every slice runs its SQL through
+     * @param ids random ids and the booking-code random source
+     * @param hasher password hashing (Jolt's PBKDF2 in production)
+     * @param refreshTokens durable refresh-token hashes
+     * @param idempotency durable Idempotency-Key responses behind Jolt's Idempotency middleware
+     * @param gateway outbound payments (checkout sessions and refunds)
+     * @param publisher post-commit seat events
+     * @param mockSender delivers the mock gateway's signed webhook over HTTP
+     * @param live SSE subscriptions
+     * @param dbUp true when {@code SELECT 1} succeeds
+     */
+    public record Ports(
+            Db db,
+            Clock clock,
+            BookingPolicy policy,
+            Ids ids,
+            PasswordHasher hasher,
+            RefreshTokenStore refreshTokens,
+            IdempotencyStore idempotency,
+            PaymentGateway gateway,
+            SeatEvents publisher,
+            GatewayCallback mockSender,
+            LiveSeats live,
+            BooleanSupplier dbUp) {}
+
+    /**
+     * @param jwtSecret HS256 secret, at least 32 bytes (JWT_SECRET)
+     * @param webhookSecret HMAC-SHA256 key of the payment webhook, at least 32 bytes
+     *     (WEBHOOK_SECRET)
+     * @param mockGateway enables the mock gateway pages (MOCK_GATEWAY)
+     * @param viewsDir directory holding {@code ticket.html} and {@code mock-gateway.html}
+     *     (VIEWS_DIR), or {@code null} to read them from {@code /views} on the class path
+     * @param sseHeartbeat interval between SSE heartbeats (15 s in production)
+     */
+    public record Settings(
+            String jwtSecret,
+            String webhookSecret,
+            boolean mockGateway,
+            Path viewsDir,
+            Duration sseHeartbeat) {
+
+        public Settings {
+            if (jwtSecret == null || jwtSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+                throw new IllegalArgumentException("JWT_SECRET must be at least 32 bytes");
+            }
+            if (webhookSecret == null
+                    || webhookSecret.getBytes(StandardCharsets.UTF_8).length < 32) {
+                throw new IllegalArgumentException("WEBHOOK_SECRET must be at least 32 bytes");
+            }
+        }
+    }
+
     /** Installs the pipeline, then every route module, on {@code app}. */
-    public static HttpPipeline install(App app, WebDeps deps) {
-        HttpPipeline pipeline = HttpPipeline.install(app, pipelineConfig(deps));
-        routes(pipeline, deps);
+    public static HttpPipeline install(App app, Ports ports, Settings settings) {
+        HttpPipeline pipeline = HttpPipeline.install(app, pipelineConfig(ports, settings));
+        routes(pipeline, ports, settings);
         return pipeline;
     }
 
-    /** The pipeline settings carried by {@code deps}. */
-    public static HttpPipeline.Config pipelineConfig(WebDeps deps) {
-        WebDeps.Settings settings = deps.settings();
+    /** The pipeline's configuration. */
+    public static HttpPipeline.Config pipelineConfig(Ports ports, Settings settings) {
         return new HttpPipeline.Config(
                 settings.jwtSecret(),
-                deps.clock(),
-                deps.idempotency(),
+                ports.clock(),
+                ports.idempotency(),
                 settings.mockGateway(),
                 settings.viewsDir());
     }
 
     /** Registers every route module behind {@code pipeline}. */
-    public static void routes(HttpPipeline pipeline, WebDeps deps) {
+    public static void routes(HttpPipeline pipeline, Ports deps, Settings settings) {
         App app = pipeline.app();
         JsonMapper mapper = pipeline.mapper();
-        WebDeps.Settings settings = deps.settings();
         Middleware idempotent = pipeline.idempotent();
 
         pipeline.module(

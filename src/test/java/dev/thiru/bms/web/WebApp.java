@@ -20,6 +20,14 @@ final class WebApp {
     /** Screen 2 of cinema 2, LARGE: rows A to J of 20, A1 and J20 blocked. */
     static final long SCREEN_ID = 5;
 
+    private static final WebModules.Settings SETTINGS =
+            new WebModules.Settings(
+                    SliceKit.SECRET,
+                    SliceKit.WEBHOOK_SECRET,
+                    true,
+                    Path.of("src/main/resources/views"),
+                    Duration.ofSeconds(15));
+
     private WebApp() {}
 
     static SliceKit boot() {
@@ -30,13 +38,12 @@ final class WebApp {
     static SliceKit boot(BooleanSupplier dbUp) {
         return SliceKit.builder()
                 .mockGateway(true)
-                .mount(k -> WebModules.routes(k.pipeline(), deps(k, dbUp)))
+                .mount(k -> WebModules.routes(k.pipeline(), ports(k, dbUp), SETTINGS))
                 .boot();
     }
 
-    private static WebDeps deps(SliceKit k, BooleanSupplier dbUp) {
-        return new WebDeps(
-                k.testDb().legacyUnitOfWork(),
+    private static WebModules.Ports ports(SliceKit k, BooleanSupplier dbUp) {
+        return new WebModules.Ports(
                 k.db(),
                 k.clock(),
                 k.policy(),
@@ -48,13 +55,7 @@ final class WebApp {
                 k.events(),
                 k.callbacks(),
                 k.live(),
-                dbUp,
-                new WebDeps.Settings(
-                        SliceKit.SECRET,
-                        SliceKit.WEBHOOK_SECRET,
-                        true,
-                        Path.of("src/main/resources/views"),
-                        Duration.ofSeconds(15)));
+                dbUp);
     }
 
     /** The first show on {@link #SCREEN_ID} one day after the seed date. */
