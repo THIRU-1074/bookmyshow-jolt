@@ -138,4 +138,41 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Java records from api/openapi.yaml into target/generated-sources/openapi. Off by default so
+      verify stays as fast as before; RecordGeneratorTest already compiles the output on every
+      build. Run: mvn -Papi-codegen -DskipTests process-test-classes
+    -->
+    <profile>
+      <id>api-codegen</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>api-records</id>
+                <phase>process-test-classes</phase>
+                <goals>
+                  <goal>java</goal>
+                </goals>
+                <configuration>
+                  <mainClass>dev.thiru.bms.api.RecordGenerator</mainClass>
+                  <classpathScope>test</classpathScope>
+                  <arguments>
+                    <argument>${project.basedir}/api/openapi.yaml</argument>
+                    <argument>${project.build.directory}/generated-sources/openapi</argument>
+                    <argument>dev.thiru.bms.api.generated</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
