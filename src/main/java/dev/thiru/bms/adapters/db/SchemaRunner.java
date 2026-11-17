@@ -218,7 +218,8 @@ public final class SchemaRunner {
                     continue;
                 }
                 int version = Integer.parseInt(m.group(1));
-                String sql = Files.readString(p, StandardCharsets.UTF_8);
+                // Normalised so a checkout with CRLF endings keeps the same checksum.
+                String sql = Files.readString(p, StandardCharsets.UTF_8).replace("\r\n", "\n");
                 Script previous =
                         found.put(
                                 version,
