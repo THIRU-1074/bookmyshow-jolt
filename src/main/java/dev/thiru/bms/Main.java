@@ -173,6 +173,9 @@ public final class Main {
                                     SSE_HEARTBEAT));
 
             App app = Jolt.create(joltConfig(config, jolt));
+            LOG.log(Level.INFO, ProxyDiagnostics.describe(app.config().trustedProxies()));
+            // First, so it sees every request, including those the gate refuses.
+            app.use(ProxyDiagnostics.firstRequest(line -> LOG.log(Level.INFO, line)));
             // Stop hooks run in reverse: the sweeper stops before the pool closes.
             app.onStop(db::close);
             live.metrics(app.metrics());
