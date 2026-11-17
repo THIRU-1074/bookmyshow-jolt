@@ -5,9 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.thiru.bms.features.catalog.CatalogDtos.CinemaShowsDto;
-import dev.thiru.bms.features.catalog.CatalogDtos.MovieSummary;
-import dev.thiru.bms.features.catalog.CatalogDtos.ShowTimesDto;
+import dev.thiru.bms.api.generated.CinemaShows;
+import dev.thiru.bms.api.generated.City;
+import dev.thiru.bms.api.generated.MovieSummary;
+import dev.thiru.bms.api.generated.Price;
+import dev.thiru.bms.api.generated.ScreenSummary;
+import dev.thiru.bms.api.generated.ShowTimes;
+import dev.thiru.bms.api.generated.Slot;
 import dev.thiru.bms.features.catalog.CatalogSql.MovieFilter;
 import dev.thiru.bms.features.catalog.CatalogSql.Sort;
 import dev.thiru.bms.kernel.DomainException;
@@ -73,7 +77,7 @@ class CatalogSqlTest {
     void citiesAndLookupsAndNotFound() {
         assertEquals(
                 List.of("bengaluru", "chennai", "mumbai"),
-                catalog.cities().stream().map(CatalogDtos.CityDto::id).toList());
+                catalog.cities().stream().map(City::id).toList());
         assertEquals("Asia/Kolkata", catalog.cities().get(0).timeZone());
         var movie = catalog.movie(2);
         assertEquals("Kaveri Nights", movie.title());
@@ -188,10 +192,10 @@ class CatalogSqlTest {
 
     @Test
     void showTimesGroupByCinemaWithLocalTimeAndMinPrice() {
-        ShowTimesDto times = catalog.showTimes(4, "bengaluru", seedDate, Set.of(), Set.of());
+        ShowTimes times = catalog.showTimes(4, "bengaluru", seedDate, Set.of(), Set.of());
         assertEquals(seedDate, times.date());
-        assertEquals(List.of(1L, 2L), times.cinemas().stream().map(CinemaShowsDto::id).toList());
-        CinemaShowsDto first = times.cinemas().get(0);
+        assertEquals(List.of(1L, 2L), times.cinemas().stream().map(CinemaShows::id).toList());
+        CinemaShows first = times.cinemas().get(0);
         assertEquals("Koramangala Cineplex", first.name());
         assertEquals("80 Feet Road, Koramangala, Bengaluru", first.address());
         assertEquals(1, first.shows().size());
@@ -204,9 +208,7 @@ class CatalogSqlTest {
         assertEquals("AVAILABLE", slot.availability());
         assertEquals(
                 List.of(LocalTime.of(10, 0), LocalTime.of(20, 30)),
-                times.cinemas().get(1).shows().stream()
-                        .map(CatalogDtos.SlotDto::localTime)
-                        .toList());
+                times.cinemas().get(1).shows().stream().map(Slot::localTime).toList());
 
         assertEquals(times, catalog.showTimes(4, "bengaluru", null, Set.of(), Set.of()));
         assertTrue(
@@ -237,7 +239,7 @@ class CatalogSqlTest {
         assertEquals(
                 List.of(2L),
                 catalog.showTimes(4, "bengaluru", seedDate, Set.of(), Set.of()).cinemas().stream()
-                        .map(CinemaShowsDto::id)
+                        .map(CinemaShows::id)
                         .toList(),
                 "started shows are not sold");
     }
@@ -284,10 +286,10 @@ class CatalogSqlTest {
         assertEquals("bengaluru", cinema.cityId());
         assertEquals(
                 List.of("Audi 1", "Audi 2", "IMAX"),
-                cinema.screens().stream().map(CatalogDtos.ScreenSummary::name).toList());
+                cinema.screens().stream().map(ScreenSummary::name).toList());
         assertEquals(
                 List.of(198, 94, 205),
-                cinema.screens().stream().map(CatalogDtos.ScreenSummary::capacity).toList());
+                cinema.screens().stream().map(ScreenSummary::capacity).toList());
     }
 
     @Test
@@ -304,9 +306,7 @@ class CatalogSqlTest {
         assertEquals("3D", d.format());
         assertEquals("SCHEDULED", d.status());
         assertEquals(
-                List.of(
-                        new CatalogDtos.PriceDto("CLASSIC", "Classic", 23000),
-                        new CatalogDtos.PriceDto("PRIME", "Prime", 33000)),
+                List.of(new Price("CLASSIC", "Classic", 23000), new Price("PRIME", "Prime", 33000)),
                 d.prices());
     }
 

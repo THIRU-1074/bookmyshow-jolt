@@ -5,10 +5,7 @@ import static dev.thiru.bms.features.admin.AdminRoutes.created;
 import static dev.thiru.bms.features.admin.AdminRoutes.layout;
 import static dev.thiru.bms.features.admin.AdminRoutes.ok;
 
-import dev.thiru.bms.features.admin.AdminDtos.OwnedCinemaDto;
-import dev.thiru.bms.features.admin.AdminDtos.ScreenDto;
-import dev.thiru.bms.features.admin.AdminDtos.ScreenRequest;
-import dev.thiru.bms.features.admin.AdminDtos.ShowReportDetailDto;
+import dev.thiru.bms.api.generated.ScreenRequest;
 import dev.thiru.bms.kernel.account.CinemaScope;
 import dev.thiru.bms.ports.Db;
 import dev.thiru.bms.ports.PaymentGateway;
@@ -59,7 +56,7 @@ public final class OwnerRoutes implements RouteModule {
                         ok(
                                 res,
                                 catalog.cinemas(scope(req)).stream()
-                                        .map(OwnedCinemaDto::of)
+                                        .map(AdminDtos::ownedCinema)
                                         .toList()));
         r.post(
                 p + "/cinemas/:id/screens",
@@ -68,7 +65,7 @@ public final class OwnerRoutes implements RouteModule {
                     ScreenRequest in = body(req, ScreenRequest.class);
                     created(
                             res,
-                            ScreenDto.of(
+                            AdminDtos.screen(
                                     catalog.createScreen(
                                             scope(req),
                                             Query.id(req, "id"),
@@ -81,7 +78,7 @@ public final class OwnerRoutes implements RouteModule {
                     ScreenRequest in = body(req, ScreenRequest.class);
                     ok(
                             res,
-                            ScreenDto.of(
+                            AdminDtos.screen(
                                     catalog.updateScreen(
                                             scope(req),
                                             Query.id(req, "id"),
@@ -106,7 +103,7 @@ public final class OwnerRoutes implements RouteModule {
                 (req, res) ->
                         ok(
                                 res,
-                                ShowReportDetailDto.of(
+                                AdminDtos.showReportDetail(
                                         reports.show(scope(req), Query.id(req, "id")))));
     }
 }

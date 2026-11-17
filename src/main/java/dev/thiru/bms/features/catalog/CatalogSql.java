@@ -1,18 +1,18 @@
 package dev.thiru.bms.features.catalog;
 
-import dev.thiru.bms.features.catalog.CatalogDtos.CinemaDetailDto;
-import dev.thiru.bms.features.catalog.CatalogDtos.CinemaDto;
-import dev.thiru.bms.features.catalog.CatalogDtos.CinemaShowsDto;
-import dev.thiru.bms.features.catalog.CatalogDtos.CityDto;
-import dev.thiru.bms.features.catalog.CatalogDtos.MovieDetail;
-import dev.thiru.bms.features.catalog.CatalogDtos.MovieRef;
-import dev.thiru.bms.features.catalog.CatalogDtos.MovieSummary;
-import dev.thiru.bms.features.catalog.CatalogDtos.NamedRef;
-import dev.thiru.bms.features.catalog.CatalogDtos.PriceDto;
-import dev.thiru.bms.features.catalog.CatalogDtos.ScreenSummary;
-import dev.thiru.bms.features.catalog.CatalogDtos.ShowDetailDto;
-import dev.thiru.bms.features.catalog.CatalogDtos.ShowTimesDto;
-import dev.thiru.bms.features.catalog.CatalogDtos.SlotDto;
+import dev.thiru.bms.api.generated.Cinema;
+import dev.thiru.bms.api.generated.CinemaDetail;
+import dev.thiru.bms.api.generated.CinemaShows;
+import dev.thiru.bms.api.generated.City;
+import dev.thiru.bms.api.generated.MovieDetail;
+import dev.thiru.bms.api.generated.MovieRef;
+import dev.thiru.bms.api.generated.MovieSummary;
+import dev.thiru.bms.api.generated.NamedRef;
+import dev.thiru.bms.api.generated.Price;
+import dev.thiru.bms.api.generated.ScreenSummary;
+import dev.thiru.bms.api.generated.ShowDetail;
+import dev.thiru.bms.api.generated.ShowTimes;
+import dev.thiru.bms.api.generated.Slot;
 import dev.thiru.bms.kernel.DomainException;
 import dev.thiru.bms.kernel.Page;
 import dev.thiru.bms.kernel.SeatId;
@@ -60,9 +60,9 @@ final class CatalogSql {
             "m.id, m.title, m.certificate, m.duration_minutes, m.release_date, m.poster_url,"
                     + " m.description";
 
-    private static final Db.Row<CinemaDto> CINEMA =
+    private static final Db.Row<Cinema> CINEMA =
             rs ->
-                    new CinemaDto(
+                    new Cinema(
                             rs.getLong("id"),
                             rs.getString("city_id"),
                             rs.getString("name"),
@@ -78,13 +78,13 @@ final class CatalogSql {
         this.policy = policy;
     }
 
-    List<CityDto> cities() {
+    List<City> cities() {
         return db.inTransaction(
                 tx ->
                         tx.query(
                                 "SELECT id, name, time_zone FROM city ORDER BY name",
                                 rs ->
-                                        new CityDto(
+                                        new City(
                                                 rs.getString("id"),
                                                 rs.getString("name"),
                                                 ZoneId.of(rs.getString("time_zone")).getId())));
@@ -161,7 +161,7 @@ final class CatalogSql {
                                                     + " LIMIT ? OFFSET ?",
                                             params.toArray())
                                     .stream()
-                                    .map(MovieDetail::summary)
+                                    .map(CatalogDtos::summary)
                                     .toList();
                     return new Page<>(items, page, size, total);
                 });
@@ -254,7 +254,7 @@ final class CatalogSql {
     }
 
     /** Future SCHEDULED shows of the movie on one local date, grouped by cinema. */
-    ShowTimesDto showTimes(
+    ShowTimes showTimes(
             long movieId,
             String cityId,
             LocalDate date,
@@ -302,7 +302,7 @@ final class CatalogSql {
                             String format,
                             long minPrice,
                             int capacity,
-                            CinemaDto cinema) {}
+                            Cinema cinema) {}
                     List<Listing> listings =
                             tx.query(
                                     sql.toString(),
@@ -314,7 +314,7 @@ final class CatalogSql {
                                                     rs.getString("format"),
                                                     rs.getLong("min_price"),
                                                     rs.getInt("capacity"),
-                                                    new CinemaDto(
+                                                    new Cinema(
                                                             rs.getLong("c_id"),
                                                             cityId,
                                                             rs.getString("c_name"),
@@ -322,11 +322,11 @@ final class CatalogSql {
                                     params.toArray());
                     Map<Long, Integer> taken =
                             countLive(tx, listings.stream().map(Listing::id).toList());
-                    Map<CinemaDto, List<SlotDto>> byCinema = new LinkedHashMap<>();
+                    Map<Cinema, List<Slot>> byCinema = new LinkedHashMap<>();
                     for (Listing l : listings) {
                         byCinema.computeIfAbsent(l.cinema(), k -> new ArrayList<>())
                                 .add(
-                                        new SlotDto(
+                                        new Slot(
                                                 l.id(),
                                                 l.startsAt(),
                                                 l.startsAt().atZone(zone).toLocalTime(),
@@ -337,16 +337,16 @@ final class CatalogSql {
                                                         l.capacity(),
                                                         taken.getOrDefault(l.id(), 0))));
                     }
-                    List<CinemaShowsDto> cinemas = new ArrayList<>();
+                    List<CinemaShows> cinemas = new ArrayList<>();
                     byCinema.forEach(
                             (c, slots) ->
                                     cinemas.add(
-                                            new CinemaShowsDto(
+                                            new CinemaShows(
                                                     c.id(),
                                                     c.name(),
                                                     c.address(),
                                                     List.copyOf(slots))));
-                    return new ShowTimesDto(day, cinemas);
+                    return new ShowTimes(day, cinemas);
                 });
     }
 
@@ -376,7 +376,7 @@ final class CatalogSql {
         return free * 5 < capacity ? "FILLING_FAST" : "AVAILABLE";
     }
 
-    Page<CinemaDto> cinemas(String cityId, int page, int size) {
+    Page<Cinema> cinemas(String cityId, int page, int size) {
         return db.inTransaction(
                 tx -> {
                     // A null city lists every cinema; the optional filter keeps one statement.
@@ -387,7 +387,7 @@ final class CatalogSql {
                                             rs -> rs.getLong(1),
                                             cityId)
                                     .orElse(0L);
-                    List<CinemaDto> items =
+                    List<Cinema> items =
                             tx.query(
                                     "SELECT id, city_id, name, address FROM cinema"
                                             + " WHERE (?1 IS NULL OR city_id = ?1)"
@@ -400,10 +400,10 @@ final class CatalogSql {
                 });
     }
 
-    CinemaDetailDto cinema(long id) {
+    CinemaDetail cinema(long id) {
         return db.inTransaction(
                 tx -> {
-                    CinemaDto c =
+                    Cinema c =
                             tx.queryOne(
                                             "SELECT id, city_id, name, address FROM cinema"
                                                     + " WHERE id = ?",
@@ -420,15 +420,15 @@ final class CatalogSql {
                                                     rs.getString("name"),
                                                     rs.getInt("capacity")),
                                     id);
-                    return new CinemaDetailDto(c.id(), c.cityId(), c.name(), c.address(), screens);
+                    return new CinemaDetail(c.id(), c.cityId(), c.name(), c.address(), screens);
                 });
     }
 
-    ShowDetailDto show(long id) {
+    ShowDetail show(long id) {
         return db.inTransaction(
                 tx -> {
                     // Prices come from the layout, so the head row is completed below.
-                    ShowDetailDto head =
+                    ShowDetail head =
                             tx.queryOne(
                                             "SELECT s.id, s.starts_at, s.language, s.format,"
                                                     + " s.status, m.id AS m_id, m.title,"
@@ -445,7 +445,7 @@ final class CatalogSql {
                                             rs -> {
                                                 Instant startsAt = Db.instant(rs, "starts_at");
                                                 ZoneId zone = ZoneId.of(rs.getString("time_zone"));
-                                                return new ShowDetailDto(
+                                                return new ShowDetail(
                                                         rs.getLong("id"),
                                                         new MovieRef(
                                                                 rs.getLong("m_id"),
@@ -468,11 +468,11 @@ final class CatalogSql {
                                             },
                                             id)
                                     .orElseThrow(() -> DomainException.notFound("Show"));
-                    List<PriceDto> prices =
+                    List<Price> prices =
                             SeatMap.prices(layout(tx, head.screen().id()), prices(tx, id)).stream()
-                                    .map(PriceDto::of)
+                                    .map(CatalogDtos::price)
                                     .toList();
-                    return new ShowDetailDto(
+                    return new ShowDetail(
                             head.id(),
                             head.movie(),
                             head.cinema(),

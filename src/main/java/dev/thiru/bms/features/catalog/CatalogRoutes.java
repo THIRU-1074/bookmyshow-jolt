@@ -60,8 +60,7 @@ public final class CatalogRoutes implements RouteModule {
                 "/api/shows/:id/seats",
                 (req, res) -> {
                     // Seat state changes every few seconds: revalidate on every use.
-                    res.json(CatalogDtos.SeatMapDto.of(catalog.seatMap(Query.id(req, "id"))))
-                            .etag();
+                    res.json(CatalogDtos.seatMap(catalog.seatMap(Query.id(req, "id")))).etag();
                     res.header("Cache-Control", "no-cache");
                 });
     }

@@ -68,7 +68,7 @@ public final class LiveRoutes implements RouteModule {
                                         new ApiException(
                                                 503, "UNAVAILABLE", "Too many live streams"));
         try (sub) {
-            String snapshot = json(LiveDtos.SeatMapDto.of(sql.snapshot(showId)));
+            String snapshot = json(LiveDtos.seatMap(sql.snapshot(showId)));
             EventStream sse = res.sse();
             sse.retry(RETRY);
             sse.event("snapshot", snapshot);

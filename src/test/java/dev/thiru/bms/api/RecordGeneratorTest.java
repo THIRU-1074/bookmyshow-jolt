@@ -3,8 +3,10 @@ package dev.thiru.bms.api;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.StringWriter;
+import java.io.IOException;
 import java.lang.reflect.RecordComponent;
+import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -14,29 +16,43 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The generated records compile, and each one has the same components, in the same order and with
- * the same types, as the hand-written web record it will replace. A schema change that the web
- * records do not follow (or the reverse) fails here before any slice switches to generated types.
+ * The slices serialise the records generated from {@code api/openapi.yaml} ({@code
+ * dev.thiru.bms.api.generated}, built at {@code generate-sources}). This holds three things:
+ *
+ * <ul>
+ *   <li>the generated records on the class path are the generator's output for the current schema;
+ *   <li>every object schema is served by its generated record, or is listed with what serves it
+ *       instead;
+ *   <li>no slice declares a record that duplicates a generated one (same components, in the same
+ *       order, with the same types, ignoring a {@code Dto} suffix), unless it is allowed below with
+ *       a reason. A copy would drift from the schema without anything noticing.
+ * </ul>
  */
 class RecordGeneratorTest {
+
+    static final String GENERATED = "dev.thiru.bms.api.generated";
 
     private static final String JOLT_PAGE = "in.jolt.Page$Result";
 
     /**
-     * Schema name to every record serialised for it today. A shape that several slices serialise
-     * (City, Cinema and MovieDetail in catalog and admin; the seat map in catalog and live) lists
-     * each copy, and each is checked against the schema.
+     * Object schemas serialised from a record that is not generated: schema to that record. The
+     * paging envelope is Jolt's own generic record since v0.4.1 ({@code web.Paging} builds it), so
+     * its components are compared by name only.
      */
-    static final Map<String, List<String>> WEB_RECORDS = webRecords();
+    static final Map<String, String> NOT_GENERATED =
+            Map.of(
+                    "MoviePage", JOLT_PAGE,
+                    "CinemaPage", JOLT_PAGE,
+                    "BookingPage", JOLT_PAGE,
+                    "ShowReportPage", JOLT_PAGE,
+                    "AccountPage", JOLT_PAGE);
 
-    /** Object schemas with no single web record: built as maps or rendered by hand. */
-    static final Set<String> NO_WEB_RECORD =
+    /** Object schemas with no record at all: built as maps or rendered by hand. */
+    static final Set<String> NO_RECORD =
             Set.of(
                     "Problem",
                     "Health",
@@ -45,183 +61,178 @@ class RecordGeneratorTest {
                     "SeatBookedEvent",
                     "HeartbeatEvent");
 
-    private static Map<String, List<String>> webRecords() {
-        Map<String, List<String>> m = new LinkedHashMap<>();
-        String catalog = "dev.thiru.bms.features.catalog.CatalogDtos$";
-        String live = "dev.thiru.bms.features.live.LiveDtos$";
-        add(m, "City", catalog + "CityDto");
-        add(m, "Cinema", catalog + "CinemaDto");
-        add(m, "MovieDetail", catalog + "MovieDetail");
-        add(m, "MovieSummary", catalog + "MovieSummary");
-        add(m, "ScreenSummary", catalog + "ScreenSummary");
-        add(m, "CinemaDetail", catalog + "CinemaDetailDto");
-        add(m, "Slot", catalog + "SlotDto");
-        add(m, "CinemaShows", catalog + "CinemaShowsDto");
-        add(m, "ShowTimes", catalog + "ShowTimesDto");
-        add(m, "MovieRef", catalog + "MovieRef");
-        add(m, "NamedRef", catalog + "NamedRef");
-        add(m, "ShowDetail", catalog + "ShowDetailDto");
-        for (String r : List.of("PriceDto", "SeatDto", "SeatRowDto", "SeatMapDto")) {
-            String schema = r.substring(0, r.length() - "Dto".length());
-            add(m, schema, catalog + r);
-            add(m, schema, live + r);
-        }
-        String admin = "dev.thiru.bms.features.admin.AdminDtos$";
-        String[][] adminDtos = {
-            {"City", "CityDto"},
-            {"MovieDetail", "MovieDetail"},
-            {"Cinema", "CinemaDto"},
-            {"LayoutCategory", "CategoryRequest"},
-            {"LayoutRow", "RowRequest"},
-            {"Layout", "LayoutRequest"},
-            {"Screen", "ScreenDto"},
-            {"Show", "ShowDto"},
-            {"ShowReport", "ShowReportDto"},
-            {"CategoryReport", "CategoryReportDto"},
-            {"ShowReportDetail", "ShowReportDetailDto"},
-            {"Stats", "StatsDto"},
-            {"Account", "AccountDto"},
-            {"OwnedCinema", "OwnedCinemaDto"},
-        };
-        for (String[] d : adminDtos) {
-            add(m, d[0], admin + d[1]);
-        }
-        String accounts = "dev.thiru.bms.features.accounts.AccountsDtos$";
-        add(m, "User", accounts + "UserDto");
-        add(m, "AuthResponse", accounts + "AuthResponse");
-        add(m, "TokenResponse", accounts + "TokenResponse");
-        add(m, "RegisterRequest", accounts + "RegisterRequest");
-        add(m, "LoginRequest", accounts + "LoginRequest");
-        add(m, "Hold", "dev.thiru.bms.features.booking.BookingDtos$HoldDto");
-        add(m, "ShowInfo", "dev.thiru.bms.features.booking.BookingDtos$ShowInfoDto");
-        add(m, "BookingSeat", "dev.thiru.bms.features.booking.BookingDtos$BookingSeatDto");
-        add(m, "Booking", "dev.thiru.bms.features.booking.BookingDtos$BookingDto");
-        add(m, "Checkout", "dev.thiru.bms.features.booking.BookingDtos$CheckoutDto");
-        add(m, "HoldRequest", "dev.thiru.bms.features.booking.BookingDtos$HoldRequest");
-        add(m, "BookingRequest", "dev.thiru.bms.features.booking.BookingDtos$BookingRequest");
-        add(m, "WebhookEvent", "dev.thiru.bms.features.payments.PaymentDtos$WebhookBody");
-        add(m, "CompleteRequest", "dev.thiru.bms.features.payments.PaymentDtos$CompleteRequest");
-        for (String r :
-                List.of(
-                        "CityRequest",
-                        "RenameRequest",
-                        "CinemaRequest",
-                        "ScreenRequest",
-                        "MovieRequest",
-                        "ShowRequest",
-                        "CancelShowResult")) {
-            add(m, r, admin + r);
-        }
-        for (String page :
-                List.of(
-                        "MoviePage",
-                        "CinemaPage",
-                        "BookingPage",
-                        "ShowReportPage",
-                        "AccountPage")) {
-            // The paging envelope is Jolt's own record since v0.4.1 (web.Paging builds it).
-            add(m, page, JOLT_PAGE);
-        }
-        return m;
-    }
-
-    private static void add(Map<String, List<String>> m, String schema, String record) {
-        m.computeIfAbsent(schema, k -> new ArrayList<>()).add(record);
-    }
+    /**
+     * Slice records allowed to duplicate a generated record, binary name to reason. Internal rows
+     * that happen to share a wire shape belong here; a wire type does not, it uses the generated
+     * record.
+     */
+    static final Map<String, String> ALLOWED_DUPLICATES =
+            Map.of(
+                    "dev.thiru.bms.features.admin.AdminReports$CategoryStat",
+                    "the report query's row, a use-case value like its sibling ShowReport (whose"
+                            + " status is an enum); AdminDtos maps it to CategoryReport",
+                    "dev.thiru.bms.features.booking.Checkout$Result",
+                    "the checkout use case's result, so the use case does not depend on the wire"
+                            + " schema; BookingRoutes maps it to the generated Checkout");
 
     private final OpenApi api = OpenApi.load();
-    private final Map<String, String> generated =
-            new RecordGenerator(api, "dev.thiru.bms.api.generated").generate();
+    private final Map<String, String> generated = new RecordGenerator(api, GENERATED).generate();
 
     @Test
-    void theGeneratedRecordsCompile(@TempDir Path dir) {
-        List<Path> files = new RecordGenerator(api, "dev.thiru.bms.api.generated").writeTo(dir);
-        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-        StringWriter diagnostics = new StringWriter();
-        boolean ok =
-                javac.getTask(
-                                diagnostics,
-                                null,
-                                null,
-                                List.of("-d", dir.resolve("classes").toString()),
-                                null,
-                                javac.getStandardFileManager(null, null, null)
-                                        .getJavaFileObjectsFromPaths(files))
-                        .call();
-        assertTrue(ok, diagnostics.toString());
+    void theGeneratedRecordsOnTheClassPathMatchTheCurrentSchema() throws Exception {
+        List<String> stale = new ArrayList<>();
+        for (Map.Entry<String, String> e : generated.entrySet()) {
+            List<String> want = components(e.getValue());
+            List<String> have = signature(Class.forName(GENERATED + "." + e.getKey()), false);
+            if (!want.equals(have)) {
+                stale.add(e.getKey() + ": schema " + want + " vs class path " + have);
+            }
+        }
+        assertEquals(List.of(), stale);
     }
 
     @Test
-    void everyObjectSchemaIsMappedToAWebRecordOrListedAsHavingNone() {
-        Set<String> unmapped = new TreeSet<>(generated.keySet());
-        unmapped.removeAll(WEB_RECORDS.keySet());
-        unmapped.removeAll(NO_WEB_RECORD);
-        assertEquals(Set.of(), unmapped);
+    void everyObjectSchemaIsGeneratedOrListedWithWhatServesIt() {
+        Set<String> listed = new TreeSet<>(NOT_GENERATED.keySet());
+        listed.addAll(NO_RECORD);
+        Set<String> unknown = new TreeSet<>(listed);
+        unknown.removeAll(generated.keySet());
+        assertEquals(Set.of(), unknown, "listed names that are not object schemas");
     }
 
     @Test
-    void eachGeneratedRecordMatchesTheWebRecordItWillReplace() throws Exception {
-        assertEquals(List.of(), mismatches(WEB_RECORDS, generated));
+    void theRecordsServingASchemaInsteadMatchItByName() throws Exception {
+        List<String> mismatches = new ArrayList<>();
+        for (Map.Entry<String, String> e : NOT_GENERATED.entrySet()) {
+            List<String> want = names(components(generated.get(e.getKey())));
+            List<String> have = names(signature(Class.forName(e.getValue()), false));
+            if (!want.equals(have)) {
+                mismatches.add(e.getKey() + ": schema " + want + " vs " + e.getValue() + have);
+            }
+        }
+        assertEquals(List.of(), mismatches);
     }
 
-    /** A record a slice might write for City, with the schema's components. */
-    record SliceCity(String id, String name, String timeZone) {}
+    @Test
+    void noSliceDeclaresARecordThatDuplicatesAGeneratedOne() throws Exception {
+        List<Class<?>> records = sliceRecords();
+        assertTrue(records.size() > 10, "found only " + records.size() + " slice records");
+        Map<String, String> found = duplicates(records);
+        Set<String> stale = new TreeSet<>(ALLOWED_DUPLICATES.keySet());
+        stale.removeAll(found.keySet());
+        found.keySet().removeAll(ALLOWED_DUPLICATES.keySet());
+        assertEquals(Map.of(), found, "use the generated record, or allow it with a reason");
+        assertEquals(Set.of(), stale, "allowed duplicates that no longer duplicate anything");
+    }
 
-    /** A slice copy of City that dropped a component. */
+    /** A record a slice might copy from the schema, Dto suffix and all. */
+    record CityDto(String id, String name, String timeZone) {}
+
+    /** A nested copy: its components name other copies. */
+    record SeatRowDto(String row, List<SeatDto> seats, List<Integer> aisleAfter) {}
+
+    record SeatDto(String id, int number, String category, String status) {}
+
+    /** Same names as City, one component dropped: not a duplicate. */
     record DriftedCity(String id, String name) {}
 
     @Test
-    void aSchemaMappedToSeveralRecordsChecksEachOfThem() throws Exception {
-        String dto = "dev.thiru.bms.features.catalog.CatalogDtos$CityDto";
-        String slice = RecordGeneratorTest.class.getName() + "$SliceCity";
-        String drifted = RecordGeneratorTest.class.getName() + "$DriftedCity";
-        assertEquals(List.of(), mismatches(Map.of("City", List.of(dto, slice)), generated));
-        List<String> found = mismatches(Map.of("City", List.of(dto, drifted, slice)), generated);
-        assertEquals(1, found.size(), found.toString());
-        assertTrue(found.get(0).contains("DriftedCity"), found.get(0));
+    void theGuardFindsCopiesUnderAnyNameAndIgnoresOtherShapes() throws Exception {
+        Map<String, String> found =
+                duplicates(
+                        List.of(CityDto.class, SeatRowDto.class, SeatDto.class, DriftedCity.class));
+        assertEquals(
+                Map.of(
+                        CityDto.class.getName(), "City/CityRequest",
+                        SeatRowDto.class.getName(), "SeatRow",
+                        SeatDto.class.getName(), "Seat"),
+                found);
     }
 
-    /** Every record whose components differ from its schema's generated record. */
-    static List<String> mismatches(
-            Map<String, List<String>> records, Map<String, String> generatedSources)
-            throws ClassNotFoundException {
-        // Record types are named by binary name first (two slices may both have a CityDto), then
-        // by simple name for the legacy Dtos records.
-        Map<String, String> webToSchema = new LinkedHashMap<>();
-        records.forEach(
-                (schema, classes) ->
-                        classes.forEach(
-                                cls -> {
-                                    webToSchema.putIfAbsent(cls, schema);
-                                    webToSchema.putIfAbsent(simple(cls), schema);
-                                }));
-        List<String> mismatches = new ArrayList<>();
-        for (Map.Entry<String, List<String>> e : records.entrySet()) {
-            for (String cls : e.getValue()) {
-                List<String> want = components(generatedSources.get(e.getKey()));
-                List<String> have = new ArrayList<>();
-                for (RecordComponent c : Class.forName(cls).getRecordComponents()) {
-                    have.add(
-                            normalise(c.getGenericType().getTypeName(), webToSchema)
-                                    + " "
-                                    + c.getName());
-                }
-                if (cls.equals(JOLT_PAGE)) {
-                    // Generic envelope: compare names only, the item type is the page's own.
-                    want = want.stream().map(s -> s.substring(s.lastIndexOf(' ') + 1)).toList();
-                    have = have.stream().map(s -> s.substring(s.lastIndexOf(' ') + 1)).toList();
-                }
-                if (!want.equals(have)) {
-                    mismatches.add(e.getKey() + ": schema " + want + " vs " + cls + " " + have);
+    /** Each record whose signature equals a generated record's, to that record's name. */
+    private Map<String, String> duplicates(List<Class<?>> records) throws ClassNotFoundException {
+        // Several schemas can share a shape (City and CityRequest): name them all.
+        Map<List<String>, String> bySignature = new LinkedHashMap<>();
+        for (String name : generated.keySet()) {
+            bySignature.merge(
+                    signature(Class.forName(GENERATED + "." + name), true),
+                    name,
+                    (a, b) -> a + "/" + b);
+        }
+        Map<String, String> found = new LinkedHashMap<>();
+        for (Class<?> r : records) {
+            String twin = bySignature.get(signature(r, true));
+            if (twin != null) {
+                found.put(r.getName(), twin);
+            }
+        }
+        return found;
+    }
+
+    /** Every record class compiled from {@code dev.thiru.bms.features} in main. */
+    private static List<Class<?>> sliceRecords()
+            throws IOException, URISyntaxException, ClassNotFoundException {
+        // The main output directory, not the first "dev/thiru/bms/features" on the class path,
+        // which is the test tree's.
+        Path base =
+                Path.of(
+                        Class.forName(GENERATED + ".City")
+                                .getProtectionDomain()
+                                .getCodeSource()
+                                .getLocation()
+                                .toURI());
+        Path dir = base.resolve("dev/thiru/bms/features");
+        List<Class<?>> out = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(dir)) {
+            for (Path f : files.filter(p -> p.toString().endsWith(".class")).toList()) {
+                String rel = base.relativize(f).toString().replace('\\', '/');
+                String name = rel.substring(0, rel.length() - ".class".length()).replace('/', '.');
+                Class<?> c = Class.forName(name, false, RecordGeneratorTest.class.getClassLoader());
+                if (c.isRecord()) {
+                    out.add(c);
                 }
             }
         }
-        return mismatches;
+        return out;
+    }
+
+    /**
+     * {@code type name} per component, types by simple name ({@code List<Price>}). With {@code
+     * dropDto}, a trailing {@code Dto} is dropped from each type name too, so a copy named {@code
+     * SeatDto} reads as {@code Seat}.
+     */
+    private static List<String> signature(Class<?> record, boolean dropDto) {
+        List<String> out = new ArrayList<>();
+        for (RecordComponent c : record.getRecordComponents()) {
+            out.add(simpleTypes(c.getGenericType().getTypeName(), dropDto) + " " + c.getName());
+        }
+        return out;
+    }
+
+    private static String simpleTypes(String type, boolean dropDto) {
+        Matcher m = Pattern.compile("[\\w.$]+").matcher(type);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            String name = m.group();
+            String simple =
+                    name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1);
+            if (dropDto && simple.endsWith("Dto")) {
+                simple = simple.substring(0, simple.length() - "Dto".length());
+            }
+            m.appendReplacement(sb, Matcher.quoteReplacement(simple));
+        }
+        m.appendTail(sb);
+        return sb.toString().replace(",", ", ").replace(",  ", ", ");
+    }
+
+    private static List<String> names(List<String> components) {
+        return components.stream().map(s -> s.substring(s.lastIndexOf(' ') + 1)).toList();
     }
 
     private static final Pattern COMPONENT =
             Pattern.compile("^\\s{8}(.+?) (\\w+)[,)]", Pattern.MULTILINE);
 
+    /** The components of a generated source, as {@code type name}. */
     private static List<String> components(String source) {
         List<String> out = new ArrayList<>();
         Matcher m = COMPONENT.matcher(source);
@@ -229,26 +240,5 @@ class RecordGeneratorTest {
             out.add(m.group(1) + " " + m.group(2));
         }
         return out;
-    }
-
-    private static String simple(String binaryName) {
-        return binaryName.substring(
-                Math.max(binaryName.lastIndexOf('.'), binaryName.lastIndexOf('$')) + 1);
-    }
-
-    /** {@code java.util.List<dev.thiru.bms.web.Dtos$PriceDto>} becomes {@code List<Price>}. */
-    private static String normalise(String type, Map<String, String> webToSchema) {
-        Matcher m = Pattern.compile("[\\w.$]+").matcher(type);
-        StringBuilder sb = new StringBuilder();
-        while (m.find()) {
-            String name = m.group();
-            String s =
-                    webToSchema.containsKey(name)
-                            ? webToSchema.get(name)
-                            : webToSchema.getOrDefault(simple(name), simple(name));
-            m.appendReplacement(sb, Matcher.quoteReplacement(s));
-        }
-        m.appendTail(sb);
-        return sb.toString().replace(",", ", ").replace(",  ", ", ");
     }
 }

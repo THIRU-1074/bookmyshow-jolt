@@ -1,7 +1,7 @@
 package dev.thiru.bms.features.payments;
 
-import dev.thiru.bms.features.payments.PaymentDtos.CompleteRequest;
-import dev.thiru.bms.features.payments.PaymentDtos.WebhookBody;
+import dev.thiru.bms.api.generated.CompleteRequest;
+import dev.thiru.bms.api.generated.WebhookEvent;
 import dev.thiru.bms.kernel.Money;
 import dev.thiru.bms.ports.Db;
 import dev.thiru.bms.ports.GatewayCallback;
@@ -62,9 +62,9 @@ public final class PaymentRoutes implements RouteModule {
     }
 
     private void webhook(Request req, Response res) {
-        WebhookBody in;
+        WebhookEvent in;
         try {
-            in = mapper.read(req.body(), WebhookBody.class);
+            in = mapper.read(req.body(), WebhookEvent.class);
         } catch (RuntimeException e) {
             throw ApiException.validation("body", "is not a valid webhook event");
         }
@@ -79,7 +79,7 @@ public final class PaymentRoutes implements RouteModule {
         }
     }
 
-    private static ProcessWebhook.Event toEvent(WebhookBody in) {
+    private static ProcessWebhook.Event toEvent(WebhookEvent in) {
         Map<String, String> errors = new LinkedHashMap<>();
         if (in == null) {
             throw ApiException.validation("body", "is required");
