@@ -10,7 +10,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | App lifecycle hooks (`onStart`, `onStop`) | [#53](https://github.com/THIRU-1074/custom-Http-Server/issues/53) | `Main` registers `app.onStop(db::close)`; `Booted.close` still ends SSE streams before `Server.close()`, because stop hooks run only after the 5 s drain (new gap B) | done (v0.4.1) |
 | Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `Idempotency.keys().store(...).required()` in `web.Idempotent`. Kept: `adapters.db.SqlIdempotency` implements Jolt's `IdempotencyStore` SPI so keys survive restarts (table rekeyed by Jolt's scope in V5), and `web.Idempotent` re-throws Jolt's plain-text refusals as problem+json `IDEMPOTENCY` and restores the request id on a replay (new gap E) | done (v0.4.1) |
 | Schema migrations | [#55](https://github.com/THIRU-1074/custom-Http-Server/issues/55) | `adapters.db.SchemaRunner` | in progress |
-| IMMEDIATE tx, generated keys, batch, optimistic update | [#56](https://github.com/THIRU-1074/custom-Http-Server/issues/56) | `adapters.db` (JDBC URL `transaction_mode=IMMEDIATE`, row-count checks) | in progress |
+| IMMEDIATE tx, generated keys, batch, optimistic update | [#56](https://github.com/THIRU-1074/custom-Http-Server/issues/56) | none: `Db.inTransaction(TxMode.IMMEDIATE, ...)` in `SqliteUnitOfWork`, `SqlRefreshTokens` and `SqlIdempotency` with `busyTimeout(5s)`; `Sql.insert` for generated keys; `Sql.batch` for seat locks, booking seats and movie languages and genres; `Sql.updateExpecting` for the booking version check (mapped to `VERSION_CONFLICT`) | done (v0.4.1) |
 | Pagination helper | [#57](https://github.com/THIRU-1074/custom-Http-Server/issues/57) | `web.Paging`: Jolt `Page` and `Page.Result` build the envelope; the app still checks `page` and `size` itself because `Page.of` answers 400 without naming the field and silently caps `size`, where SPEC 7 wants 422 `errors.page`/`errors.size` | done (v0.4.1), parameter check kept |
 | Scheduled background tasks | [#58](https://github.com/THIRU-1074/custom-Http-Server/issues/58) | none: `app.every("expiry-sweep", SWEEP_INTERVAL, ...)` in `Main` | done (v0.4.1) |
 | Webhook signature verification | [#59](https://github.com/THIRU-1074/custom-Http-Server/issues/59) | verification is `Webhooks.hmacSha256(WEBHOOK_SECRET, "Bms-Signature").prefix("v1=").timestampHeader("Bms-Timestamp")` on the webhook route; `adapters.payment.WebhookSigner` stays because Jolt has no signer and the mock gateway must sign | done (v0.4.1) |
@@ -33,7 +33,6 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | Jolt issue | File holding the workaround |
 |---|---|
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
-| #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
 | #68 | `src/main/java/dev/thiru/bms/Main.java`, `Dockerfile` |
 
 ## New gaps found in v0.4.1 (not filed yet)

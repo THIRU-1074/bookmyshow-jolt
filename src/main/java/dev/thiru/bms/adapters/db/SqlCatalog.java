@@ -385,24 +385,22 @@ final class SqlCatalog {
                     return show;
                 }
             }
-            // Id 0 means "new": SQLite assigns the key (jolt-db 0.3.1 exposes no generated keys).
-            sql.update(
-                    "INSERT INTO show (id, movie_id, screen_id, starts_at, ends_at, language,"
-                            + " format, prices_json, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    show.id() > 0 ? (Object) show.id() : null,
-                    show.movieId(),
-                    show.screenId(),
-                    Sqls.ms(show.startsAt()),
-                    Sqls.ms(show.endsAt()),
-                    show.language(),
-                    show.format().label(),
-                    prices,
-                    show.status().name());
+            // Id 0 means "new": SQLite assigns the key; an explicit id is its own rowid.
             long id =
-                    show.id() > 0
-                            ? show.id()
-                            : sql.queryOne("SELECT last_insert_rowid()", rs -> rs.getLong(1))
-                                    .orElseThrow();
+                    sql.insert(
+                                    "INSERT INTO show (id, movie_id, screen_id, starts_at,"
+                                            + " ends_at, language, format, prices_json, status)"
+                                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                    show.id() > 0 ? (Object) show.id() : null,
+                                    show.movieId(),
+                                    show.screenId(),
+                                    Sqls.ms(show.startsAt()),
+                                    Sqls.ms(show.endsAt()),
+                                    show.language(),
+                                    show.format().label(),
+                                    prices,
+                                    show.status().name())
+                            .orElseThrow();
             return new Show(
                     id,
                     show.movieId(),

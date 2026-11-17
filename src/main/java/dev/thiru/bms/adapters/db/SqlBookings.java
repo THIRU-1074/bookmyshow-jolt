@@ -13,6 +13,7 @@ import dev.thiru.bms.domain.SeatHold;
 import dev.thiru.bms.domain.SeatId;
 import dev.thiru.bms.domain.User;
 import dev.thiru.bms.domain.port.BookingRepositories;
+import in.jolt.db.OptimisticLockException;
 import in.jolt.db.RowMapper;
 import in.jolt.db.Sql;
 import java.time.Instant;
@@ -105,27 +106,25 @@ final class SqlBookings {
         public User insert(User user) {
             String roles =
                     user.roles().stream().map(Role::name).sorted().collect(Collectors.joining(","));
+            long id;
             try {
-                sql.update(
-                        "INSERT INTO app_user (id, email, password_hash, name, roles, created_at)"
-                                + " VALUES (?, ?, ?, ?, ?, ?)",
-                        user.id() > 0 ? (Object) user.id() : null,
-                        user.email(),
-                        user.passwordHash(),
-                        user.name(),
-                        roles,
-                        Sqls.ms(user.createdAt()));
+                id =
+                        sql.insert(
+                                        "INSERT INTO app_user (id, email, password_hash, name,"
+                                                + " roles, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                                        user.id() > 0 ? (Object) user.id() : null,
+                                        user.email(),
+                                        user.passwordHash(),
+                                        user.name(),
+                                        roles,
+                                        Sqls.ms(user.createdAt()))
+                                .orElseThrow();
             } catch (RuntimeException e) {
                 if (Sqls.isConstraint(e)) {
                     throw DomainException.validation("email", "is already registered");
                 }
                 throw e;
             }
-            long id =
-                    user.id() > 0
-                            ? user.id()
-                            : sql.queryOne("SELECT last_insert_rowid()", rs -> rs.getLong(1))
-                                    .orElseThrow();
             return new User(
                     id,
                     user.email(),
@@ -267,32 +266,35 @@ final class SqlBookings {
                     b.version(),
                     Sqls.ms(b.createdAt()),
                     Sqls.ms(b.updatedAt()));
-            for (BookingSeat s : b.seats()) {
-                sql.update(
-                        "INSERT INTO booking_seat (booking_id, seat_id, category, price)"
-                                + " VALUES (?, ?, ?, ?)",
-                        b.id(),
-                        s.seat().toString(),
-                        s.category(),
-                        s.price());
-            }
+            sql.batch(
+                    "INSERT INTO booking_seat (booking_id, seat_id, category, price)"
+                            + " VALUES (?, ?, ?, ?)",
+                    b.seats().stream()
+                            .map(
+                                    s ->
+                                            new Object[] {
+                                                b.id(), s.seat().toString(), s.category(), s.price()
+                                            })
+                            .toList());
         }
 
         @Override
         public Booking update(Booking b) {
-            int n =
-                    sql.update(
-                            "UPDATE booking SET status = ?, expires_at = ?, refund_amount = ?,"
-                                    + " checkout_count = ?, updated_at = ?, version = version + 1"
-                                    + " WHERE id = ? AND version = ?",
-                            b.status().name(),
-                            Sqls.ms(b.expiresAt()),
-                            b.refundAmount(),
-                            b.checkoutCount(),
-                            Sqls.ms(b.updatedAt()),
-                            b.id(),
-                            b.version());
-            if (n != 1) {
+            try {
+                sql.updateExpecting(
+                        "UPDATE booking SET status = ?, expires_at = ?, refund_amount = ?,"
+                                + " checkout_count = ?, updated_at = ?, version = version + 1"
+                                + " WHERE id = ? AND version = ?",
+                        1,
+                        b.status().name(),
+                        Sqls.ms(b.expiresAt()),
+                        b.refundAmount(),
+                        b.checkoutCount(),
+                        Sqls.ms(b.updatedAt()),
+                        b.id(),
+                        b.version());
+            } catch (OptimisticLockException stale) {
+                // The use case re-reads and retries once, then answers 409 VERSION_CONFLICT.
                 throw DomainException.versionConflict();
             }
             return b.withVersion(b.version() + 1);

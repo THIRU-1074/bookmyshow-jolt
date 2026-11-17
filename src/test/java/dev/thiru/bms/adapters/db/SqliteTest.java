@@ -1,6 +1,7 @@
 package dev.thiru.bms.adapters.db;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import in.jolt.db.Db;
@@ -22,7 +23,8 @@ class SqliteTest {
         assertTrue(url.contains("journal_mode=WAL"), url);
         assertTrue(url.contains("busy_timeout=5000"), url);
         assertTrue(url.contains("foreign_keys=true"), url);
-        assertTrue(url.contains("transaction_mode=IMMEDIATE"), url);
+        // IMMEDIATE is chosen per transaction (TxMode), not for every connection.
+        assertFalse(url.contains("transaction_mode"), url);
     }
 
     @Test
@@ -47,26 +49,28 @@ class SqliteTest {
     }
 
     @Test
-    void transactionsBeginImmediate() throws Exception {
+    void unitOfWorkTransactionsBeginImmediate() throws Exception {
         String url = Sqlite.jdbcUrl(dir.resolve("c.db"));
         try (Db db = Sqlite.open(url);
                 Connection other = Sqlite.connect(url)) {
             db.update("CREATE TABLE t (id INTEGER PRIMARY KEY) STRICT");
-            db.inTransaction(
-                    tx -> {
-                        // With IMMEDIATE the write lock is taken at BEGIN, so even after a plain
-                        // read a second writer is blocked and fails once its timeout expires.
-                        tx.query("SELECT * FROM t", r -> r.getInt(1));
-                        try (Statement st = other.createStatement()) {
-                            st.execute("PRAGMA busy_timeout = 50");
-                            st.executeUpdate("INSERT INTO t VALUES (1)");
-                            throw new AssertionError("second writer should be blocked");
-                        } catch (SQLException expected) {
-                            assertTrue(
-                                    expected.getMessage().contains("BUSY"), expected.getMessage());
-                        }
-                        return null;
-                    });
+            new SqliteUnitOfWork(db)
+                    .inTransaction(
+                            r -> {
+                                // With IMMEDIATE the write lock is taken at BEGIN, so before any
+                                // statement
+                                // a second writer is blocked and fails once its timeout expires.
+                                try (Statement st = other.createStatement()) {
+                                    st.execute("PRAGMA busy_timeout = 50");
+                                    st.executeUpdate("INSERT INTO t VALUES (1)");
+                                    throw new AssertionError("second writer should be blocked");
+                                } catch (SQLException expected) {
+                                    assertTrue(
+                                            expected.getMessage().contains("BUSY"),
+                                            expected.getMessage());
+                                }
+                                return null;
+                            });
         }
     }
 }
