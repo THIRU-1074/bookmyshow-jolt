@@ -6,7 +6,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 
 | Gap | Jolt issue | Workaround location | Status |
 |---|---|---|---|
-| Repeated query params (`req.queryAll`) | [#52](https://github.com/THIRU-1074/custom-Http-Server/issues/52) | `web.Query` (comma lists only) | closed upstream, awaiting release v0.4.0 (bump jolt.version, remove workaround) |
+| Repeated query params (`req.queryAll`) | [#52](https://github.com/THIRU-1074/custom-Http-Server/issues/52) | none: `web.Query.list` reads `queryAll` and still splits comma lists | done (v0.4.1) |
 | App lifecycle hooks (`onStart`, `onStop`) | [#53](https://github.com/THIRU-1074/custom-Http-Server/issues/53) | `Main` (sweeper start, shutdown hook) | closed upstream, awaiting release v0.4.0 (bump jolt.version, remove workaround) |
 | Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `web.IdempotencyFilter` over the `IdempotencyStore` port | closed upstream, awaiting release v0.4.0 (bump jolt.version, remove workaround) |
 | Schema migrations | [#55](https://github.com/THIRU-1074/custom-Http-Server/issues/55) | `adapters.db.SchemaRunner` | in progress |
@@ -32,7 +32,6 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 
 | Jolt issue | File holding the workaround |
 |---|---|
-| #52 | `src/main/java/dev/thiru/bms/web/Query.java` |
 | #53 | `src/main/java/dev/thiru/bms/Main.java` (`startSweeper`, `Booted.close` from a shutdown hook) |
 | #54 | `src/main/java/dev/thiru/bms/web/IdempotencyFilter.java`, `adapters/db/SqlIdempotency.java`, `src/main/resources/db/migrations/V3__idempotency.sql` |
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |

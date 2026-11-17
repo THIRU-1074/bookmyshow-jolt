@@ -40,6 +40,15 @@ class CatalogApiTest {
                 .expect(200)
                 .jsonEquals("total", 1);
         kit.http
+                .get("/api/movies?genre=Comedy&genre=Drama&language=ta")
+                .expect(200)
+                .jsonEquals("total", 1);
+        kit.http
+                .get("/api/movies?genre=Comedy&genre=Horror,Drama")
+                .expect(200)
+                .jsonEquals("total", 1);
+        kit.http.get("/api/movies?certificate=U&certificate=X").expect(422);
+        kit.http
                 .get("/api/movies?city=bengaluru&date=2026-11-22")
                 .expect(200)
                 .jsonEquals("total", 1);
