@@ -2,7 +2,7 @@
 
 1. **Contract first.** Build against [docs/SPEC.md](docs/SPEC.md). If the spec is wrong or silent, say so to the main session; do not invent behaviour. Spec changes go in their own commit.
 2. **Test first.** Write the failing test, then the code. `mvn -B verify` must be green before every commit (tests, `spotless:check`, jacoco). Run `mvn spotless:apply` to format.
-3. **Layering.** `domain` imports only the JDK; `application` imports `domain` only; `web` imports `application` and `domain`, never adapters; adapters never import `web`; only `Main` names concrete adapters. `ArchitectureTest` fails the build otherwise.
+3. **Layering.** The target is vertical slices around a thin hexagon (SPEC section 10, `docs/restructure/PLAN.md`). `kernel` imports only the JDK; `ports` imports only `kernel` and the JDK; `features.<slice>` never imports another slice or any adapter; adapters never import `web` or `features`; only `Main` names concrete adapters. Until wave 6, the legacy `domain.port` repositories import only `kernel`, `ports` and the JDK, and no slice may use them or `application`. `ArchitectureTest` and `TargetArchitectureTest` fail the build otherwise.
 4. **Jolt APIs.** Use only APIs in the Jolt version pinned by `jolt.version` (see Jolt's `llms.txt` and `llms-extras.txt`). Never copy Jolt internals.
 5. **Workarounds.** A workaround for a Jolt gap is allowed only if it is isolated (one class or adapter), marked `TODO(jolt#N)` citing an existing issue, and listed in [docs/JOLT_GAPS.md](docs/JOLT_GAPS.md). No issue, no workaround.
 6. **Raising a Jolt issue.** Check open issues first (`gh issue list -R THIRU-1074/custom-Http-Server --label from-bms`). Then:
