@@ -7,16 +7,14 @@ import dev.thiru.bms.application.fakes.FakeWorld;
 import dev.thiru.bms.kernel.DomainException;
 import dev.thiru.bms.kernel.DomainException.Code;
 import dev.thiru.bms.kernel.booking.Booking;
-import dev.thiru.bms.kernel.booking.BookingStatus;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Booking queries and the mock gateway on FakeWorld. Its report cases moved to {@code
- * features.admin.AdminReportsTest}.
+ * The legacy mock gateway on FakeWorld (wave 4 moves it). Its report and booking query cases moved
+ * to {@code features.admin.AdminReportsTest} and {@code features.booking.BookingQueriesTest}.
  */
 class AdminReportsAndQueriesTest {
 
@@ -40,31 +38,6 @@ class AdminReportsAndQueriesTest {
                                 "INR",
                                 w.clock.instant()));
         confirmed = w.booking(held.id());
-    }
-
-    @Test
-    void strangersGetNotFoundButAdminsAndOwnersGetTheBooking() {
-        BookingQueries q = new BookingQueries(w);
-        assertEquals("Kaveri Nights", q.get(7, false, confirmed.id()).show().movieTitle());
-        assertEquals(confirmed.id(), q.get(99, true, confirmed.id()).booking().id());
-        assertEquals(
-                Code.NOT_FOUND,
-                assertThrows(DomainException.class, () -> q.get(8, false, confirmed.id())).code());
-        assertEquals(1, q.list(7, Set.of(BookingStatus.CONFIRMED), 1, 20).total());
-        assertEquals(0, q.list(8, Set.of(), 1, 20).total());
-    }
-
-    @Test
-    void ticketIsOwnerOnlyAndConfirmedOnly() {
-        BookingQueries q = new BookingQueries(w);
-        assertEquals(confirmed.code(), q.ticket(7, confirmed.id()).booking().code());
-        assertEquals(
-                Code.NOT_FOUND,
-                assertThrows(DomainException.class, () -> q.ticket(99, confirmed.id())).code());
-        Booking other = new CreateBooking(w, w, w, w.clock).execute(8, w.putHold(8, "A5").id());
-        assertEquals(
-                Code.BOOKING_STATE,
-                assertThrows(DomainException.class, () -> q.ticket(8, other.id())).code());
     }
 
     @Test

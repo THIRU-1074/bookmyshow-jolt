@@ -15,9 +15,9 @@ import java.time.Instant;
 /**
  * HELD to PAYMENT_PENDING: opens a payment with the gateway and extends the payment window.
  *
- * <p>Kept as a test fixture until wave 5; delete with {@code ProcessPaymentWebhookTest} (wave 4),
- * {@code CancelShowTest} and {@code AdminReportsAndQueriesTest} (wave 5). Production uses {@code
- * features.booking}.
+ * <p>Kept as a test fixture until wave 4: {@code ProcessPaymentWebhookTest} and the mock gateway
+ * case of {@code AdminReportsAndQueriesTest} build their state with it. Delete it, and its own
+ * test, with them. Production uses {@code features.booking}.
  */
 public final class Checkout {
 
