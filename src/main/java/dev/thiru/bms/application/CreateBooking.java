@@ -17,7 +17,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 
-/** HELD booking from an ACTIVE hold; the hold becomes CONSUMED. */
+/**
+ * HELD booking from an ACTIVE hold; the hold becomes CONSUMED.
+ *
+ * <p>Kept as a test fixture until wave 5; delete with {@code ProcessPaymentWebhookTest} (wave 4),
+ * {@code CancelShowTest} and {@code AdminReportsAndQueriesTest} (wave 5). Production uses {@code
+ * features.booking}.
+ */
 public final class CreateBooking {
 
     private static final int CODE_ATTEMPTS = 10;

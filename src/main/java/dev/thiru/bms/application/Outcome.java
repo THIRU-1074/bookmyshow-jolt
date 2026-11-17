@@ -5,6 +5,9 @@ import dev.thiru.bms.kernel.DomainException;
 /**
  * Result of a transaction body that must commit its writes even though the caller gets an error
  * (lazy expiry writes, then reports 410). Throwing inside the transaction would roll them back.
+ *
+ * <p>Kept as a test fixture until wave 5; delete with {@code CreateBooking}, {@code Checkout} and
+ * {@code CancelBooking}. Production uses {@code features.booking.Outcome}.
  */
 record Outcome<T>(T value, DomainException failure) {
 

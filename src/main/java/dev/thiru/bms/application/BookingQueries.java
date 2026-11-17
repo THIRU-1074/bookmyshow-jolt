@@ -16,7 +16,13 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Set;
 
-/** Read side of bookings with ownership rules: strangers see "not found", never "forbidden". */
+/**
+ * Read side of bookings with ownership rules: strangers see "not found", never "forbidden".
+ *
+ * <p>Kept as a test fixture until wave 5; delete with {@code AdminReportsAndQueriesTest}, whose two
+ * cases of it are already ported to {@code features.booking.BookingQueriesTest}. Production uses
+ * {@code features.booking}.
+ */
 public final class BookingQueries {
 
     public record ShowInfo(

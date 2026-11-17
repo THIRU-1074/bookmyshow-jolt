@@ -2,17 +2,13 @@ package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.AdminCatalog;
 import dev.thiru.bms.application.AdminReports;
-import dev.thiru.bms.application.BookingQueries;
-import dev.thiru.bms.application.CancelBooking;
 import dev.thiru.bms.application.CancelShow;
-import dev.thiru.bms.application.Checkout;
-import dev.thiru.bms.application.CreateBooking;
-import dev.thiru.bms.application.CreateHold;
 import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.UserAdmin;
 import dev.thiru.bms.features.accounts.Accounts;
 import dev.thiru.bms.features.accounts.AuthRoutes;
+import dev.thiru.bms.features.booking.BookingRoutes;
 import dev.thiru.bms.features.catalog.CatalogRoutes;
 import dev.thiru.bms.features.live.LiveRoutes;
 import in.jolt.App;
@@ -63,8 +59,6 @@ public final class WebModules {
         WebDeps.Settings settings = deps.settings();
         Middleware idempotent = pipeline.idempotent();
 
-        BookingQueries bookings = new BookingQueries(deps.uow());
-
         pipeline.module(
                 AuthRoutes.of(
                         pipeline.jwt(),
@@ -81,24 +75,13 @@ public final class WebModules {
                         settings.sseHeartbeat(),
                         mapper));
         pipeline.module(
-                new BookingModule(
-                        new CreateHold(
-                                deps.uow(),
-                                deps.publisher(),
-                                deps.ids(),
-                                deps.clock(),
-                                deps.policy()),
-                        new CreateBooking(deps.uow(), deps.publisher(), deps.ids(), deps.clock()),
-                        bookings,
-                        new Checkout(
-                                deps.uow(),
-                                deps.gateway(),
-                                deps.publisher(),
-                                deps.ids(),
-                                deps.clock(),
-                                deps.policy()),
-                        new CancelBooking(
-                                deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
+                new BookingRoutes(
+                        deps.db(),
+                        deps.publisher(),
+                        deps.ids(),
+                        deps.clock(),
+                        deps.policy(),
+                        deps.gateway(),
                         idempotent,
                         pipeline.holdLimit()));
 

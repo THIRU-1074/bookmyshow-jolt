@@ -13,8 +13,8 @@ import dev.thiru.bms.adapters.payment.MockGatewayClient;
 import dev.thiru.bms.adapters.payment.MockGatewaySender;
 import dev.thiru.bms.adapters.payment.MockPaymentGateway;
 import dev.thiru.bms.adapters.payment.WebhookSigner;
-import dev.thiru.bms.application.ExpireSweep;
 import dev.thiru.bms.features.accounts.Accounts;
+import dev.thiru.bms.features.booking.ExpireSweep;
 import dev.thiru.bms.web.WebDeps;
 import dev.thiru.bms.web.WebModules;
 import in.jolt.App;
@@ -179,7 +179,7 @@ public final class Main {
             // Stop hooks run in reverse: the sweeper stops before the pool closes.
             app.onStop(db::close);
             live.metrics(app.metrics());
-            scheduleSweep(app, config, clock, uow, live, refreshTokens, idempotency);
+            scheduleSweep(app, config, clock, sliceDb, live, refreshTokens, idempotency);
             // Registers the SPEC 9 middleware chain first, then every API route.
             WebModules.install(app, deps);
             if (config.metricsToken() != null) {
@@ -205,11 +205,11 @@ public final class Main {
             App app,
             AppConfig config,
             Clock clock,
-            SqliteUnitOfWork uow,
+            SqliteDb sliceDb,
             LiveSeatHub live,
             SqlRefreshTokens refreshTokens,
             SqlIdempotency idempotency) {
-        ExpireSweep sweep = new ExpireSweep(uow, live, clock);
+        ExpireSweep sweep = new ExpireSweep(sliceDb, live, clock);
         app.every(
                 "expiry-sweep",
                 config.sweepInterval(),

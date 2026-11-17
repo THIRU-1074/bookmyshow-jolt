@@ -12,7 +12,13 @@ import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Instant;
 
-/** HELD to PAYMENT_PENDING: opens a payment with the gateway and extends the payment window. */
+/**
+ * HELD to PAYMENT_PENDING: opens a payment with the gateway and extends the payment window.
+ *
+ * <p>Kept as a test fixture until wave 5; delete with {@code ProcessPaymentWebhookTest} (wave 4),
+ * {@code CancelShowTest} and {@code AdminReportsAndQueriesTest} (wave 5). Production uses {@code
+ * features.booking}.
+ */
 public final class Checkout {
 
     public record Result(

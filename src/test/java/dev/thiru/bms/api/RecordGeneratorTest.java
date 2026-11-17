@@ -53,11 +53,6 @@ class RecordGeneratorTest {
             {"City", "CityDto"},
             {"MovieDetail", "MovieDetail"},
             {"Cinema", "CinemaDto"},
-            {"Hold", "HoldDto"},
-            {"ShowInfo", "ShowInfoDto"},
-            {"BookingSeat", "BookingSeatDto"},
-            {"Booking", "BookingDto"},
-            {"Checkout", "CheckoutDto"},
             {"LayoutCategory", "CategoryRequest"},
             {"LayoutRow", "RowRequest"},
             {"Layout", "LayoutRequest"},
@@ -98,8 +93,13 @@ class RecordGeneratorTest {
         add(m, "TokenResponse", accounts + "TokenResponse");
         add(m, "RegisterRequest", accounts + "RegisterRequest");
         add(m, "LoginRequest", accounts + "LoginRequest");
-        add(m, "HoldRequest", WEB + "BookingModule$HoldRequest");
-        add(m, "BookingRequest", WEB + "BookingModule$BookingRequest");
+        add(m, "Hold", "dev.thiru.bms.features.booking.BookingDtos$HoldDto");
+        add(m, "ShowInfo", "dev.thiru.bms.features.booking.BookingDtos$ShowInfoDto");
+        add(m, "BookingSeat", "dev.thiru.bms.features.booking.BookingDtos$BookingSeatDto");
+        add(m, "Booking", "dev.thiru.bms.features.booking.BookingDtos$BookingDto");
+        add(m, "Checkout", "dev.thiru.bms.features.booking.BookingDtos$CheckoutDto");
+        add(m, "HoldRequest", "dev.thiru.bms.features.booking.BookingDtos$HoldRequest");
+        add(m, "BookingRequest", "dev.thiru.bms.features.booking.BookingDtos$BookingRequest");
         add(m, "WebhookEvent", WEB + "PaymentModule$WebhookBody");
         add(m, "CompleteRequest", WEB + "PaymentModule$CompleteRequest");
         for (String r :

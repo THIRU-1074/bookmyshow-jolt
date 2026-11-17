@@ -2,11 +2,9 @@ package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.AdminCatalog;
 import dev.thiru.bms.application.AdminReports;
-import dev.thiru.bms.application.BookingQueries;
 import dev.thiru.bms.application.UserAdmin;
 import dev.thiru.bms.domain.port.AdminRepositories;
 import dev.thiru.bms.kernel.account.User;
-import dev.thiru.bms.kernel.booking.Booking;
 import dev.thiru.bms.kernel.catalog.Cinema;
 import dev.thiru.bms.kernel.catalog.City;
 import dev.thiru.bms.kernel.catalog.Movie;
@@ -15,7 +13,6 @@ import dev.thiru.bms.kernel.catalog.SeatLayout;
 import dev.thiru.bms.kernel.catalog.Show;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -61,74 +58,6 @@ final class Dtos {
             return new CinemaDto(c.id(), c.cityId(), c.name(), c.address());
         }
     }
-
-    // ---- bookings ----
-
-    record HoldDto(
-            String id,
-            long showId,
-            List<String> seats,
-            long amount,
-            String currency,
-            Instant expiresAt) {}
-
-    record ShowInfoDto(
-            long id,
-            String movieTitle,
-            String cinemaName,
-            String screenName,
-            Instant startsAt,
-            LocalTime localTime) {}
-
-    record BookingSeatDto(String id, String category, long price) {}
-
-    record BookingDto(
-            String id,
-            String code,
-            String status,
-            ShowInfoDto show,
-            List<BookingSeatDto> seats,
-            long amount,
-            String currency,
-            long refundAmount,
-            Instant expiresAt,
-            long version,
-            Instant createdAt) {
-        static BookingDto of(BookingQueries.BookingView v) {
-            Booking b = v.booking();
-            BookingQueries.ShowInfo s = v.show();
-            return new BookingDto(
-                    b.id(),
-                    b.code(),
-                    b.status().name(),
-                    new ShowInfoDto(
-                            s.id(),
-                            s.movieTitle(),
-                            s.cinemaName(),
-                            s.screenName(),
-                            s.startsAt(),
-                            s.localTime()),
-                    b.seats().stream()
-                            .map(
-                                    x ->
-                                            new BookingSeatDto(
-                                                    x.seat().toString(), x.category(), x.price()))
-                            .toList(),
-                    b.amount(),
-                    b.currency(),
-                    b.refundAmount(),
-                    b.expiresAt(),
-                    b.version(),
-                    b.createdAt());
-        }
-    }
-
-    record CheckoutDto(
-            String paymentId,
-            String checkoutUrl,
-            long amount,
-            String currency,
-            Instant expiresAt) {}
 
     // ---- admin ----
 

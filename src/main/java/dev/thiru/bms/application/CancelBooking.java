@@ -13,7 +13,12 @@ import dev.thiru.bms.ports.SeatEvents;
 import java.time.Clock;
 import java.time.Instant;
 
-/** Owner cancellation with the time-based refund of SPEC section 4. */
+/**
+ * Owner cancellation with the time-based refund of SPEC section 4.
+ *
+ * <p>Kept as a test fixture until wave 5; delete with {@code AdminReportsAndQueriesTest}.
+ * Production uses {@code features.booking}.
+ */
 public final class CancelBooking {
 
     private final UnitOfWork uow;
