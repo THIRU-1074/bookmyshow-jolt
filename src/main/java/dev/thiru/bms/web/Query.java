@@ -12,7 +12,7 @@ import java.util.function.Function;
  * Query-string parsing with 422 field errors. Multi-value filters accept repeated parameters and
  * comma lists, mixed freely (SPEC 7, filters).
  */
-final class Query {
+public final class Query {
 
     private Query() {}
 
@@ -20,7 +20,7 @@ final class Query {
      * {@code ?genre=Action&genre=Drama} or {@code ?genre=Action,Drama} to {@code
      * {"Action","Drama"}}; blank parts are dropped.
      */
-    static Set<String> list(Params p, String name) {
+    public static Set<String> list(Params p, String name) {
         Set<String> out = new LinkedHashSet<>();
         for (String raw : p.queryAll(name)) {
             Arrays.stream(raw.split(","))
@@ -31,7 +31,7 @@ final class Query {
         return out;
     }
 
-    static <T> Set<T> list(Params p, String name, Function<String, T> parse) {
+    public static <T> Set<T> list(Params p, String name, Function<String, T> parse) {
         Set<T> out = new LinkedHashSet<>();
         for (String s : list(p, name)) {
             try {
@@ -43,7 +43,7 @@ final class Query {
         return out;
     }
 
-    static LocalDate date(Params p, String name) {
+    public static LocalDate date(Params p, String name) {
         String raw = p.query(name);
         if (raw == null || raw.isBlank()) {
             return null;
@@ -55,13 +55,13 @@ final class Query {
         }
     }
 
-    static String text(Params p, String name) {
+    public static String text(Params p, String name) {
         String raw = p.query(name);
         return raw == null || raw.isBlank() ? null : raw.trim();
     }
 
     /** Path id as a positive long; anything else reads as "no such resource". */
-    static long id(Params p, String name) {
+    public static long id(Params p, String name) {
         try {
             long v = Long.parseLong(p.param(name));
             if (v > 0) {

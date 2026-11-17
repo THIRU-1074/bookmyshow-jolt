@@ -9,14 +9,14 @@ import java.util.Map;
 import java.util.Set;
 
 /** The signed-in caller, read from the verified JWT claims the middleware stored on the request. */
-record Principal(long userId, Set<Role> roles) {
+public record Principal(long userId, Set<Role> roles) {
 
-    boolean isAdmin() {
+    public boolean isAdmin() {
         return roles.contains(Role.ADMIN);
     }
 
     /** Any known role; every account holds AUDIENCE, so this is every real account. */
-    boolean isSignedIn() {
+    public boolean isSignedIn() {
         return !roles.isEmpty();
     }
 
@@ -28,7 +28,7 @@ record Principal(long userId, Set<Role> roles) {
         return isAdmin() ? CinemaScope.everything() : CinemaScope.ownedBy(userId);
     }
 
-    static Principal of(Request req) {
+    public static Principal of(Request req) {
         Object sub = req.attr("user");
         if (sub == null) {
             throw ApiException.unauthenticated("Authentication required");

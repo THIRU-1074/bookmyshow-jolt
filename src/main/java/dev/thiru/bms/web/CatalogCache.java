@@ -18,7 +18,7 @@ import java.util.function.Supplier;
  * <p>Failed loads (404, 422) are not cached. Seat holds and bookings do not clear it: a listing's
  * availability badge may lag by up to the same minute, while the seat map itself is never cached.
  */
-final class CatalogCache {
+public final class CatalogCache {
 
     static final Duration TTL = Duration.ofSeconds(60);
 
@@ -32,7 +32,7 @@ final class CatalogCache {
     }
 
     /** The cached body for this request, loading it once on a miss. */
-    Object get(Request req, Supplier<Object> load) {
+    public Object get(Request req, Supplier<Object> load) {
         return cache.get(key(req), k -> load.get());
     }
 

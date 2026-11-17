@@ -14,14 +14,14 @@ import java.util.function.Function;
  * 400 that does not name the field and silently caps an oversized {@code size}, while SPEC 7 wants
  * a 422 with {@code errors.page} or {@code errors.size}.
  */
-final class Paging {
+public final class Paging {
 
-    static final int DEFAULT_SIZE = 20;
-    static final int MAX_SIZE = 100;
+    public static final int DEFAULT_SIZE = 20;
+    public static final int MAX_SIZE = 100;
 
     private Paging() {}
 
-    static Page request(Params p) {
+    public static Page request(Params p) {
         Map<String, String> errors = new LinkedHashMap<>();
         int page = number(p.query("page"), 1, "page", 1, Integer.MAX_VALUE, errors);
         int size = number(p.query("size"), DEFAULT_SIZE, "size", 1, MAX_SIZE, errors);
@@ -32,7 +32,8 @@ final class Paging {
     }
 
     /** The domain page as Jolt's JSON envelope, items mapped to their DTOs. */
-    static <S, T> Page.Result<T> result(dev.thiru.bms.kernel.Page<S> page, Function<S, T> mapper) {
+    public static <S, T> Page.Result<T> result(
+            dev.thiru.bms.kernel.Page<S> page, Function<S, T> mapper) {
         return new Page(page.page(), page.size())
                 .result(page.items().stream().map(mapper).toList(), page.total());
     }
