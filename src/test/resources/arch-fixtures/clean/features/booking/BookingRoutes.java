@@ -1,5 +1,6 @@
 package dev.thiru.bms.features.booking;
 
+import dev.thiru.bms.api.generated.Hold;
 import dev.thiru.bms.features.booking.sql.BookingSql;
 import dev.thiru.bms.kernel.booking.BookingState;
 import dev.thiru.bms.ports.Payments;

@@ -90,7 +90,7 @@ class TargetArchitectureTest {
                                 "adapters/db/SqliteDb.java: adapters never import web or features"
                                         + " (dev.thiru.bms.web.Paging)",
                                 "features/admin/AdminSql.java: features import only the kernel, ports,"
-                                        + " web, Jolt and the JDK (dev.thiru.bms.AppConfig)",
+                                        + " web, api.generated, Jolt and the JDK (dev.thiru.bms.AppConfig)",
                                 "features/booking/BookingSql.java: feature booking never imports"
                                         + " feature catalog (dev.thiru.bms.features.catalog.CatalogSql)",
                                 "features/live/LiveSql.java: features never import adapters"
@@ -167,10 +167,12 @@ class TargetArchitectureTest {
     void featureImportingAnythingOffItsListIsCaught() {
         String rule =
                 "features/catalog/Movies.java: features import only the kernel, ports, web,"
-                        + " Jolt and the JDK";
+                        + " api.generated, Jolt and the JDK";
         assertEquals(
                 List.of(
                         rule + " (dev.thiru.bms.domain.port.Repositories)",
+                        // The generator is build-time code; only its output is importable.
+                        rule + " (dev.thiru.bms.api.OpenApi)",
                         rule + " (org.yaml.snakeyaml.Yaml)",
                         rule + " (dev.thiru.bms.AppConfig)"),
                 fixture("feature-imports-unlisted"));

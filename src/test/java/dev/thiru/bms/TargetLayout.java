@@ -37,7 +37,13 @@ final class TargetLayout {
 
     /** What a slice may import besides its own slice. */
     static final List<String> FEATURE_IMPORTS =
-            List.of("java.", "in.jolt.", BASE + "kernel.", BASE + "ports.", BASE + "web.");
+            List.of(
+                    "java.",
+                    "in.jolt.",
+                    BASE + "kernel.",
+                    BASE + "ports.",
+                    BASE + "web.",
+                    BASE + "api.generated.");
 
     private static final Pattern IMPORT =
             Pattern.compile(
@@ -95,7 +101,7 @@ final class TargetLayout {
                         : "feature " + slice + " never imports feature " + other;
             }
             if (FEATURE_IMPORTS.stream().noneMatch(dep::startsWith)) {
-                return "features import only the kernel, ports, web, Jolt and the JDK";
+                return "features import only the kernel, ports, web, api.generated, Jolt and the JDK";
             }
             return null;
         }
