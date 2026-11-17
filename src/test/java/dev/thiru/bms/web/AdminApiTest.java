@@ -158,7 +158,14 @@ class AdminApiTest {
                 .json(Map.of("title", "X", "certificate", "PG"))
                 .expect(422)
                 .jsonHas("errors.certificate");
-        post("/api/admin/shows").json(Map.of()).expect(422).jsonHas("errors.movieId");
+        post("/api/admin/shows")
+                .json(Map.of())
+                .expect(422)
+                .jsonEquals("errors.movieId", "is required")
+                .jsonEquals("errors.screenId", "is required")
+                .jsonEquals("errors.startsAt", "is required")
+                .jsonEquals("errors.format", "is required")
+                .jsonEquals("errors.prices", "is required");
         post("/api/admin/shows")
                 .json(
                         Map.of(

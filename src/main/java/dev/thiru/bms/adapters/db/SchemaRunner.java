@@ -33,12 +33,15 @@ import java.util.regex.Pattern;
  * records them in {@code schema_history} together with a checksum so an edited migration is
  * detected instead of silently skipped.
  *
- * <p>Plain JDBC because jolt-db 0.3.1 cannot run multi-statement scripts. Each migration runs in
- * one transaction, so a failure leaves the database at the previous version. Scripts must not
- * contain trigger bodies ({@code BEGIN ... END}); the splitter only understands quotes and
- * comments.
+ * <p>Each migration runs in one transaction, so a failure leaves the database at the previous
+ * version. Scripts must not contain trigger bodies ({@code BEGIN ... END}); the splitter only
+ * understands quotes and comments.
  *
- * <p>TODO(jolt#55): replace with {@code Migrations.runClasspath} once released.
+ * <p>Kept instead of Jolt's {@code Migrations.runClasspath} (0.4.0): that one records history in
+ * {@code jolt_schema_history} with its own checksums, so on a database this runner already migrated
+ * it would find no history and run V1 again over the existing tables. Render starts from an empty
+ * disk on each deploy, but local databases and the Docker {@code /data} volume do not. See
+ * docs/JOLT_GAPS.md.
  */
 public final class SchemaRunner {
 

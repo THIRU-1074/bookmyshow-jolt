@@ -9,6 +9,7 @@ import dev.thiru.bms.application.AdminReports;
 import dev.thiru.bms.application.CancelShow;
 import dev.thiru.bms.domain.ShowFormat;
 import in.jolt.Middleware;
+import in.jolt.Page;
 import in.jolt.Request;
 import in.jolt.Response;
 import in.jolt.RouteModule;
@@ -121,10 +122,10 @@ final class OwnerModule implements RouteModule {
     }
 
     private void reportList(Request req, Response res) {
-        PageRequest page = PageRequest.of(req);
+        Page page = Paging.request(req);
         ok(
                 res,
-                PageResult.of(
+                Paging.result(
                         reports.shows(
                                 Principal.of(req).cinemaScope(),
                                 Query.text(req, "city"),

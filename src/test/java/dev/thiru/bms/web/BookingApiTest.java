@@ -70,6 +70,16 @@ class BookingApiTest {
                         .expect(201)
                         .header("Idempotency-Replayed", "true");
         assertArrayEquals(first.bytes(), replay.bytes());
+        // A replay keeps its own request id, not the first request's.
+        kit.http
+                .post("/api/holds")
+                .header("Authorization", auth())
+                .header("Idempotency-Key", "same")
+                .header("X-Request-Id", "second-try")
+                .json(Map.of("showId", 9, "seats", List.of("A2")))
+                .expect(201)
+                .header("Idempotency-Replayed", "true")
+                .header("X-Request-Id", "second-try");
         assertTrue(replay.header("Content-Type").startsWith("application/json"));
         assertEquals(1, kit.world.allHolds().size());
 
@@ -78,8 +88,10 @@ class BookingApiTest {
                 .header("Authorization", auth())
                 .header("Idempotency-Key", "same")
                 .json(Map.of("showId", 9, "seats", List.of("A3")))
+                .header("X-Request-Id", "mismatch")
                 .expect(422)
-                .jsonEquals("code", "IDEMPOTENCY");
+                .jsonEquals("code", "IDEMPOTENCY")
+                .jsonEquals("requestId", "mismatch");
     }
 
     @Test
@@ -109,6 +121,17 @@ class BookingApiTest {
                 .expect(422)
                 .jsonEquals("errors.showId", "is required")
                 .jsonHas("errors.seats");
+        Map<String, Object> nullSeat = new java.util.HashMap<>();
+        nullSeat.put("showId", dev.thiru.bms.application.fakes.FakeWorld.SHOW_ID);
+        nullSeat.put("seats", java.util.Arrays.asList("A2", null));
+        kit.http
+                .post("/api/holds")
+                .header("Authorization", auth())
+                .header("Idempotency-Key", kit.key())
+                .json(nullSeat)
+                .expect(422)
+                .jsonEquals("code", "VALIDATION")
+                .jsonEquals("errors.seats[1]", "is required");
         kit.hold(ada, "A2", "A3");
         String eve = kit.user("eve@example.com");
         kit.http
@@ -275,6 +298,19 @@ class BookingApiTest {
                 .expect(401)
                 .jsonEquals("code", "UNAUTHENTICATED");
         kit.http.post("/api/payments/webhook").json(Map.of()).expect(401);
+        byte[] body = "{\"eventId\":\"e\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        long now = kit.world.clock.instant().getEpochSecond();
+        // Tampered body, wrong secret's format, stale and future timestamps are all 401.
+        kit.signedWebhook(
+                        "{\"eventId\":\"f\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        now,
+                        WebKit.sign(now, body))
+                .expect(401);
+        kit.signedWebhook(body, now - 301, WebKit.sign(now - 301, body))
+                .expect(401)
+                .jsonEquals("code", "UNAUTHENTICATED");
+        kit.signedWebhook(body, now + 301, WebKit.sign(now + 301, body)).expect(401);
+        kit.signedWebhook(body, now - 300, WebKit.sign(now - 300, body)).expect(422);
         kit.webhook("evt-x", "payment.refunded", payment, 15000).expect(422).jsonHas("errors.type");
         kit.webhook("evt-y", "payment.succeeded", payment, 1)
                 .expect(422)

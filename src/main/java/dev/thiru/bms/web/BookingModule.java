@@ -9,10 +9,13 @@ import dev.thiru.bms.domain.Booking;
 import dev.thiru.bms.domain.BookingStatus;
 import dev.thiru.bms.domain.SeatId;
 import in.jolt.Middleware;
+import in.jolt.Page;
 import in.jolt.Request;
 import in.jolt.Response;
 import in.jolt.RouteModule;
 import in.jolt.Router;
+import in.jolt.Validate;
+import in.jolt.Validator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -28,6 +31,22 @@ final class BookingModule implements RouteModule {
     record HoldRequest(Long showId, List<String> seats) {}
 
     record BookingRequest(String holdId) {}
+
+    /**
+     * Shape only; the use case checks the seats against the layout ({@code seats[2]: unknown
+     * seat}).
+     */
+    static final Validator<HoldRequest> HOLD =
+            (in, r) -> {
+                if (in.showId() == null) {
+                    r.error("showId", "is required");
+                }
+                if (in.seats() == null || in.seats().isEmpty()) {
+                    r.error("seats", "must list at least one seat");
+                }
+                // A null element is "seats[i]: is required".
+                r.each("seats", in.seats(), (seat, sr) -> {});
+            };
 
     private final CreateHold holds;
     private final CreateBooking create;
@@ -103,18 +122,9 @@ final class BookingModule implements RouteModule {
     }
 
     private void hold(Request req, Response res) {
-        HoldRequest in = req.body(HoldRequest.class);
-        // TODO(jolt#61): declare these with nested validation rules.
-        Map<String, String> errors = new LinkedHashMap<>();
-        if (in == null || in.showId() == null) {
-            errors.put("showId", "is required");
-        }
-        if (in == null || in.seats() == null || in.seats().isEmpty()) {
-            errors.put("seats", "must list at least one seat");
-        }
-        if (!errors.isEmpty()) {
-            throw ApiException.validation(errors);
-        }
+        HoldRequest body = req.body(HoldRequest.class);
+        HoldRequest in = body == null ? new HoldRequest(null, null) : body;
+        Validate.check(r -> HOLD.validate(in, r));
         CreateHold.Result h = holds.execute(Principal.of(req).userId(), in.showId(), in.seats());
         res.status(201)
                 .noStore()
@@ -139,12 +149,12 @@ final class BookingModule implements RouteModule {
     }
 
     private void list(Request req, Response res) {
-        PageRequest page = PageRequest.of(req);
+        Page page = Paging.request(req);
         var statuses =
                 Query.list(req, "status", s -> BookingStatus.valueOf(s.toUpperCase(Locale.ROOT)));
         res.noStore()
                 .json(
-                        PageResult.of(
+                        Paging.result(
                                 queries.list(
                                         Principal.of(req).userId(),
                                         statuses,

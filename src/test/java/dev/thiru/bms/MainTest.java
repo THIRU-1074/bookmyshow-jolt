@@ -58,7 +58,7 @@ class MainTest {
     void unknownRouteIsProblemJson() {
         boot().get("/api/nope")
                 .expect(404)
-                .header("Content-Type", "application/problem+json")
+                .header("Content-Type", "application/problem+json; charset=utf-8")
                 .jsonEquals("status", 404);
     }
 
@@ -92,7 +92,7 @@ class MainTest {
         boot().get("/api/nope")
                 .header("Accept", "text/html")
                 .expect(404)
-                .header("Content-Type", "application/problem+json");
+                .header("Content-Type", "application/problem+json; charset=utf-8");
     }
 
     @Test
@@ -104,7 +104,11 @@ class MainTest {
     void metricsNeedTheBearerToken() {
         JoltTest http = boot("METRICS_TOKEN", "metrics-token");
         http.get("/_jolt/metrics").expect(401);
-        http.get("/_jolt/metrics").header("Authorization", "Bearer metrics-token").expect(200);
+        http.get("/_jolt/metrics")
+                .header("Authorization", "Bearer metrics-token")
+                .expect(200)
+                .bodyContains("bms_sse_subscribers 0");
+        http.get("/_jolt/health").expect(200).jsonEquals("checks.db", "UP");
     }
 
     @Test
@@ -134,6 +138,31 @@ class MainTest {
                 java.util.List.of("10.0.0.0/8"),
                 Main.joltConfig(config("TRUST_PROXY", "10.0.0.0/8"), JoltConfig.defaults())
                         .trustedProxies());
+    }
+
+    @Test
+    void theSweepRunsOnJoltsSchedulerOnceListeningAndStopsOnClose() throws Exception {
+        JoltTest http = boot("SWEEP_INTERVAL", "PT0.1S", "METRICS_TOKEN", "metrics-token");
+        booted.listen(0);
+        String series = "jolt_task_runs_total{task=\"expiry-sweep\"}";
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        String metrics = "";
+        while (System.nanoTime() < deadline && !ranOnce(metrics, series)) {
+            Thread.sleep(50);
+            metrics =
+                    http.get("/_jolt/metrics")
+                            .header("Authorization", "Bearer metrics-token")
+                            .expect(200)
+                            .text();
+        }
+        assertTrue(ranOnce(metrics, series), metrics);
+        booted.close();
+        // The pool is closed by the stop hook after the sweeper stopped.
+        http.get("/api/health").expect(503).jsonEquals("db", "DOWN");
+    }
+
+    private static boolean ranOnce(String metrics, String series) {
+        return metrics.lines().anyMatch(l -> l.startsWith(series + " ") && !l.endsWith(" 0"));
     }
 
     @Test

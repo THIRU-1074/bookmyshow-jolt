@@ -4,21 +4,27 @@ import dev.thiru.bms.application.CatalogQueries;
 import dev.thiru.bms.domain.Certificate;
 import dev.thiru.bms.domain.ShowFormat;
 import dev.thiru.bms.domain.port.CatalogRepositories.MovieQuery;
+import in.jolt.Page;
 import in.jolt.Request;
 import in.jolt.Response;
 import in.jolt.RouteModule;
 import in.jolt.Router;
 import java.util.Locale;
 
-/** Public catalog and seat map (SPEC 7, catalog and seats). */
+/**
+ * Public catalog and seat map (SPEC 7, catalog and seats). Cities, the movie list and show listings
+ * are served from {@link CatalogCache}.
+ */
 final class CatalogModule implements RouteModule {
 
     private static final String PUBLIC_CACHE = "public, max-age=60";
 
     private final CatalogQueries catalog;
+    private final CatalogCache cache;
 
-    CatalogModule(CatalogQueries catalog) {
+    CatalogModule(CatalogQueries catalog, CatalogCache cache) {
         this.catalog = catalog;
+        this.cache = cache;
     }
 
     @Override
@@ -26,19 +32,28 @@ final class CatalogModule implements RouteModule {
         r.get(
                 "/api/cities",
                 (req, res) ->
-                        cached(res, catalog.cities().stream().map(Dtos.CityDto::of).toList()));
-        r.get("/api/movies", this::movies);
+                        cached(
+                                res,
+                                cache.get(
+                                        req,
+                                        () ->
+                                                catalog.cities().stream()
+                                                        .map(Dtos.CityDto::of)
+                                                        .toList())));
+        r.get("/api/movies", (req, res) -> cached(res, cache.get(req, () -> movies(req))));
         r.get(
                 "/api/movies/:id",
                 (req, res) -> cached(res, Dtos.MovieDetail.of(catalog.movie(Query.id(req, "id")))));
-        r.get("/api/movies/:id/shows", this::showTimes);
+        r.get(
+                "/api/movies/:id/shows",
+                (req, res) -> cached(res, cache.get(req, () -> showTimes(req))));
         r.get(
                 "/api/cinemas",
                 (req, res) -> {
-                    PageRequest page = PageRequest.of(req);
+                    Page page = Paging.request(req);
                     cached(
                             res,
-                            PageResult.of(
+                            Paging.result(
                                     catalog.cinemas(
                                             Query.text(req, "city"), page.page(), page.size()),
                                     Dtos.CinemaDto::of));
@@ -60,8 +75,8 @@ final class CatalogModule implements RouteModule {
                 });
     }
 
-    private void movies(Request req, Response res) {
-        PageRequest page = PageRequest.of(req);
+    private Object movies(Request req) {
+        Page page = Paging.request(req);
         CatalogQueries.MovieFilter filter =
                 new CatalogQueries.MovieFilter(
                         Query.text(req, "city"),
@@ -75,26 +90,22 @@ final class CatalogModule implements RouteModule {
                                 s -> Certificate.valueOf(s.toUpperCase(Locale.ROOT))),
                         Query.list(req, "format", CatalogModule::format),
                         sort(Query.text(req, "sort")));
-        cached(
-                res,
-                PageResult.of(
-                        catalog.movies(filter, page.page(), page.size()), Dtos.MovieSummary::of));
+        return Paging.result(
+                catalog.movies(filter, page.page(), page.size()), Dtos.MovieSummary::of);
     }
 
-    private void showTimes(Request req, Response res) {
+    private Object showTimes(Request req) {
         String city = Query.text(req, "city");
         if (city == null) {
             throw ApiException.validation("city", "is required");
         }
-        cached(
-                res,
-                Dtos.ShowTimesDto.of(
-                        catalog.showTimes(
-                                Query.id(req, "id"),
-                                city,
-                                Query.date(req, "date"),
-                                Query.list(req, "language"),
-                                Query.list(req, "format", CatalogModule::format))));
+        return Dtos.ShowTimesDto.of(
+                catalog.showTimes(
+                        Query.id(req, "id"),
+                        city,
+                        Query.date(req, "date"),
+                        Query.list(req, "language"),
+                        Query.list(req, "format", CatalogModule::format)));
     }
 
     private static ShowFormat format(String s) {

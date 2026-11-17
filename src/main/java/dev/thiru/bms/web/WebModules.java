@@ -25,6 +25,7 @@ import in.jolt.Middleware;
 import in.jolt.RateLimit;
 import in.jolt.RequestId;
 import in.jolt.SecurityHeaders;
+import in.jolt.Webhooks;
 import in.jolt.auth.JwtAuth;
 import in.jolt.auth.RefreshTokens;
 import java.time.Duration;
@@ -46,13 +47,20 @@ public final class WebModules {
             "default-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; "
                     + "form-action 'self'";
 
+    /** SPEC 7: a webhook timestamp more than 300 s from now is rejected. */
+    static final Duration WEBHOOK_TOLERANCE = Duration.ofSeconds(300);
+
     private WebModules() {}
 
     /** Registers middleware and every route module on {@code app}. */
     public static void install(App app, WebDeps deps) {
         JsonMapper mapper = app.config().jsonMapper();
         WebDeps.Settings settings = deps.settings();
-        app.views(settings.viewsDir());
+        if (settings.viewsDir() == null) {
+            app.viewsClasspath("/views", null);
+        } else {
+            app.views(settings.viewsDir());
+        }
         Problems.install(app);
 
         JwtAuth jwt = JwtAuth.hs256(settings.jwtSecret());
@@ -65,7 +73,7 @@ public final class WebModules {
                         // Re-read on every issue and refresh: a demotion or deletion is picked up
                         // the next time the access token is renewed.
                         .claims(subject -> claimsFor(accounts, subject));
-        Rbac rbac = new Rbac(jwt, mapper);
+        Rbac rbac = new Rbac(jwt);
 
         app.use(RequestId.middleware());
         app.use(Logger.requests());
@@ -73,29 +81,31 @@ public final class WebModules {
                 SecurityHeaders.defaults()
                         .csp(CSP)
                         .hsts(Duration.ofDays(365), req -> "https".equalsIgnoreCase(req.scheme())));
-        app.use(Problems.middleware(mapper));
+        app.use(Problems.middleware());
         app.use(Compress.gzip());
 
         Duration minute = Duration.ofMinutes(1);
-        app.use("/api/auth/login", Guards.adapt(RateLimit.perIp(10, minute), mapper));
-        app.use("/api/auth/register", Guards.adapt(RateLimit.perIp(10, minute), mapper));
-        app.use("/api/auth/refresh", Guards.adapt(RateLimit.perIp(30, minute), mapper));
-        app.use("/api/auth", Guards.adapt(Csrf.protect(), mapper));
+        app.use("/api/auth/login", RateLimit.perIp(10, minute));
+        app.use("/api/auth/register", RateLimit.perIp(10, minute));
+        app.use("/api/auth/refresh", RateLimit.perIp(30, minute));
+        app.use("/api/auth", Csrf.protect());
         app.use("/api", rbac.gate());
         app.use("/api/admin", rbac.adminLayer());
         app.use("/api/owner", rbac.ownerLayer());
+        CatalogCache catalogCache = new CatalogCache(deps.clock());
+        catalogCache.metrics(app.metrics());
+        app.use("/api/admin", catalogCache.clearAfterWrites());
+        app.use("/api/owner", catalogCache.clearAfterWrites());
 
-        Middleware idempotent = new IdempotencyFilter(deps.idempotency(), deps.clock()).required();
+        Middleware idempotent = Idempotent.required(deps.idempotency());
         // Runs after the gate, so "user" is the verified subject.
-        Middleware holdLimit =
-                Guards.adapt(
-                        RateLimit.perKey(20, minute, req -> "user:" + req.attr("user")), mapper);
+        Middleware holdLimit = RateLimit.perKey(20, minute, req -> "user:" + req.attr("user"));
 
         CatalogQueries catalog = new CatalogQueries(deps.uow(), deps.clock(), deps.policy());
         BookingQueries bookings = new BookingQueries(deps.uow());
 
         app.module(new AuthModule(accounts, tokens));
-        app.module(new CatalogModule(catalog));
+        app.module(new CatalogModule(catalog, catalogCache));
         app.module(
                 new LiveModule(
                         catalog, deps.live(), deps.clock(), settings.sseHeartbeat(), mapper));
@@ -124,8 +134,8 @@ public final class WebModules {
         MockGatewayPayments mock = null;
         if (settings.mockGateway()) {
             mock = new MockGatewayPayments(deps.uow(), deps.mockSender(), deps.ids(), deps.clock());
-            Middleware completeLimit = Guards.adapt(RateLimit.perIp(30, minute), mapper);
-            Middleware csrf = Guards.adapt(Csrf.protect(), mapper);
+            Middleware completeLimit = RateLimit.perIp(30, minute);
+            Middleware csrf = Csrf.protect();
             app.use(
                     "/mock-gateway",
                     (req, res, next) -> {
@@ -141,7 +151,11 @@ public final class WebModules {
                 new PaymentModule(
                         new ProcessPaymentWebhook(
                                 deps.uow(), deps.gateway(), deps.publisher(), deps.clock()),
-                        deps.webhookVerifier(),
+                        Webhooks.hmacSha256(settings.webhookSecret(), "Bms-Signature")
+                                .prefix("v1=")
+                                .timestampHeader("Bms-Timestamp")
+                                .tolerance(WEBHOOK_TOLERANCE)
+                                .clock(deps.clock()),
                         mock,
                         mapper));
         AdminCatalog adminCatalog = new AdminCatalog(deps.uow(), deps.clock());
@@ -157,7 +171,8 @@ public final class WebModules {
                         deps.live(),
                         idempotent));
         app.module(new OwnerModule(adminCatalog, reports, cancelShow, idempotent));
-        // TODO(jolt#71): register the DB check with exposeMetrics once apps can add checks.
+        // The same check feeds /_jolt/health; /api/health keeps its own JSON shape for Render.
+        app.health("db", () -> deps.dbUp().getAsBoolean());
         app.get(
                 "/api/health",
                 (req, res) -> {

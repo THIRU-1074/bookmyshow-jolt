@@ -2,22 +2,21 @@ package dev.thiru.bms.web;
 
 import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.application.ProcessPaymentWebhook;
-import dev.thiru.bms.application.WebhookVerifier;
 import in.jolt.HttpException;
 import in.jolt.JsonMapper;
+import in.jolt.Middleware;
 import in.jolt.Request;
 import in.jolt.Response;
 import in.jolt.RouteModule;
 import in.jolt.Router;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * The payment webhook and, when enabled, the mock gateway pages (SPEC 7, payments). The webhook
- * carries no JWT: the HMAC signature over the raw body is its credential, so a forged call is 401
- * before anything is parsed.
+ * carries no JWT: the HMAC signature over the raw body is its credential, checked by Jolt's {@code
+ * Webhooks} middleware, so a forged or stale call is 401 before anything is parsed.
  */
 final class PaymentModule implements RouteModule {
 
@@ -33,7 +32,7 @@ final class PaymentModule implements RouteModule {
     record CompleteRequest(String outcome) {}
 
     private final ProcessPaymentWebhook webhook;
-    private final WebhookVerifier verifier;
+    private final Middleware signature;
     private final MockGatewayPayments mock;
     private final JsonMapper mapper;
 
@@ -42,18 +41,18 @@ final class PaymentModule implements RouteModule {
      */
     PaymentModule(
             ProcessPaymentWebhook webhook,
-            WebhookVerifier verifier,
+            Middleware signature,
             MockGatewayPayments mock,
             JsonMapper mapper) {
         this.webhook = webhook;
-        this.verifier = verifier;
+        this.signature = signature;
         this.mock = mock;
         this.mapper = mapper;
     }
 
     @Override
     public void register(Router r) {
-        r.post("/api/payments/webhook", this::webhook);
+        r.post("/api/payments/webhook", signature, this::webhook);
         if (mock != null) {
             r.get("/mock-gateway/:id", this::page);
             r.post("/mock-gateway/:id/complete", this::complete);
@@ -61,10 +60,6 @@ final class PaymentModule implements RouteModule {
     }
 
     private void webhook(Request req, Response res) {
-        String raw = new String(req.body(), StandardCharsets.UTF_8);
-        if (!verifier.verify(req.header("Bms-Timestamp"), req.header("Bms-Signature"), raw)) {
-            throw ApiException.unauthenticated("Invalid webhook signature");
-        }
         WebhookBody in;
         try {
             in = mapper.read(req.body(), WebhookBody.class);

@@ -9,21 +9,20 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * Query-string parsing with 422 field errors. Multi-value filters take comma lists only until Jolt
- * can read repeated parameters.
- *
- * <p>TODO(jolt#52): read repeated parameters with {@code req.queryAll} and drop the comma-only
- * limitation.
+ * Query-string parsing with 422 field errors. Multi-value filters accept repeated parameters and
+ * comma lists, mixed freely (SPEC 7, filters).
  */
 final class Query {
 
     private Query() {}
 
-    /** {@code ?genre=Action,Drama} to {@code {"Action","Drama"}}; blank parts are dropped. */
+    /**
+     * {@code ?genre=Action&genre=Drama} or {@code ?genre=Action,Drama} to {@code
+     * {"Action","Drama"}}; blank parts are dropped.
+     */
     static Set<String> list(Params p, String name) {
-        String raw = p.query(name);
         Set<String> out = new LinkedHashSet<>();
-        if (raw != null) {
+        for (String raw : p.queryAll(name)) {
             Arrays.stream(raw.split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())

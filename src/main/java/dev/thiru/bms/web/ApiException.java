@@ -1,14 +1,17 @@
 package dev.thiru.bms.web;
 
+import in.jolt.HttpException;
 import java.util.List;
 import java.util.Map;
 
-/** A web-layer failure with an explicit status and stable problem+json {@code code}. */
-public final class ApiException extends RuntimeException {
+/**
+ * A web-layer failure with an explicit status and stable problem+json {@code code}. It is an {@link
+ * HttpException} so Jolt treats it as an expected outcome and does not log it.
+ */
+public final class ApiException extends HttpException {
 
     private static final long serialVersionUID = 1L;
 
-    private final int status;
     private final String code;
     private final transient Map<String, String> errors;
     private final transient List<String> conflicts;
@@ -23,15 +26,10 @@ public final class ApiException extends RuntimeException {
             String detail,
             Map<String, String> errors,
             List<String> conflicts) {
-        super(detail);
-        this.status = status;
+        super(status, detail);
         this.code = code;
         this.errors = Map.copyOf(errors);
         this.conflicts = List.copyOf(conflicts);
-    }
-
-    public int status() {
-        return status;
     }
 
     public String code() {

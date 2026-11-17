@@ -4,11 +4,8 @@ import dev.thiru.bms.domain.DomainException;
 import in.jolt.App;
 import in.jolt.HttpException;
 import in.jolt.HttpStatus;
-import in.jolt.JsonMapper;
 import in.jolt.Middleware;
 import in.jolt.Reply;
-import in.jolt.Request;
-import in.jolt.Response;
 import in.jolt.ValidationException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,10 +14,13 @@ import java.util.Map;
 
 /**
  * Turns every failure into {@code application/problem+json} with a stable {@code code} (SPEC 7).
- * One middleware catches what handlers throw so the body can carry the request id, which Jolt's own
- * error mappers cannot see.
+ * The bodies come from request-aware {@code app.onError} mappers; Jolt adds {@code requestId}.
  *
- * <p>TODO(jolt#77): fold into {@code app.onError} once a mapper can read the request.
+ * <p>{@link #middleware} only classifies before Jolt sees a failure: Jolt logs every mapped
+ * exception that is not an {@link HttpException} at WARNING with its stack trace, which would log
+ * each expected seat conflict and break SPEC 9's one line per request. So a domain error is
+ * re-thrown as an {@link ApiException}, and anything unexpected is logged here by class and request
+ * id (messages can carry user data) and re-thrown as a bare 500. See docs/JOLT_GAPS.md.
  */
 final class Problems {
 
@@ -48,7 +48,8 @@ final class Problems {
             return new Problem(422, "VALIDATION", "Validation failed", v.errors(), List.of());
         }
         if (e instanceof HttpException h) {
-            return new Problem(h.status(), codeOf(h.status()), h.getMessage(), Map.of(), List.of());
+            String detail = h.status() == 500 ? "Internal server error" : h.getMessage();
+            return new Problem(h.status(), codeOf(h.status()), detail, Map.of(), List.of());
         }
         return new Problem(500, "INTERNAL", "Internal server error", Map.of(), List.of());
     }
@@ -77,11 +78,12 @@ final class Problems {
             case 403 -> "FORBIDDEN";
             case 404 -> "NOT_FOUND";
             case 429 -> "RATE_LIMITED";
+            case 500 -> "INTERNAL";
             default -> HttpStatus.reasonFor(status).toUpperCase(Locale.ROOT).replace(' ', '_');
         };
     }
 
-    static Map<String, Object> body(Problem p, String requestId) {
+    static Map<String, Object> body(Problem p) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("type", "about:blank");
         body.put("title", HttpStatus.reasonFor(p.status()));
@@ -94,46 +96,38 @@ final class Problems {
         if (!p.conflicts().isEmpty()) {
             body.put("conflicts", p.conflicts());
         }
-        if (requestId != null) {
-            body.put("requestId", requestId);
-        }
         return body;
     }
 
-    /** Catches handler failures and writes the problem, including the request id. */
-    static Middleware middleware(JsonMapper mapper) {
+    /** Classifies failures from everything after it; see the class comment. */
+    static Middleware middleware() {
         return (req, res, next) -> {
             try {
                 next.run();
+            } catch (HttpException e) {
+                throw e;
+            } catch (DomainException e) {
+                Problem p = of(e);
+                throw new ApiException(p.status(), p.code(), p.detail(), p.errors(), p.conflicts());
             } catch (Exception e) {
-                write(req, res, mapper, e);
+                // Class name and request id only: messages can carry user data.
+                LOG.log(
+                        System.Logger.Level.ERROR,
+                        "unhandled " + e.getClass().getName() + " requestId=" + req.id());
+                throw new HttpException(500, "Internal server error");
             }
         };
     }
 
-    static void write(Request req, Response res, JsonMapper mapper, Throwable e) {
-        Problem p = of(e);
-        if (p.status() >= 500) {
-            // Class name and request id only: messages can carry user data.
-            LOG.log(
-                    System.Logger.Level.ERROR,
-                    "unhandled " + e.getClass().getName() + " requestId=" + req.id());
-        }
-        res.status(p.status())
-                .header("Content-Type", "application/problem+json")
-                .send(mapper.write(body(p, req.id())));
-    }
-
-    /** Fallback for errors raised outside the middleware chain (no request id available). */
+    /** The problem+json mappers; Jolt adds {@code requestId} when the request has one. */
     static void install(App app) {
-        app.onError(ApiException.class, e -> reply(e));
-        app.onError(DomainException.class, e -> reply(e));
-        app.onError(ValidationException.class, e -> reply(e));
-        app.onError(HttpException.class, e -> reply(e));
+        app.onError(HttpException.class, (e, req) -> reply(e));
+        app.onError(DomainException.class, (e, req) -> reply(e));
+        app.onError(Exception.class, (e, req) -> reply(e));
     }
 
     private static Reply<?> reply(Throwable e) {
         Problem p = of(e);
-        return Reply.status(p.status(), body(p, null));
+        return Reply.status(p.status(), body(p));
     }
 }

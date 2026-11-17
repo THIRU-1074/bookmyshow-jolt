@@ -58,10 +58,6 @@ final class SqlAdmin {
         return Json.write(root);
     }
 
-    private static long lastId(Sql sql) {
-        return sql.queryOne("SELECT last_insert_rowid()", rs -> rs.getLong(1)).orElseThrow();
-    }
-
     private static boolean exists(Sql sql, String query, Object... args) {
         return sql.queryOne(query, rs -> rs.getInt(1), args).isPresent();
     }
@@ -96,12 +92,14 @@ final class SqlAdmin {
                         c.id());
                 return c;
             }
-            sql.update(
-                    "INSERT INTO cinema (city_id, name, address) VALUES (?, ?, ?)",
-                    c.cityId(),
-                    c.name(),
-                    c.address());
-            return new Cinema(lastId(sql), c.cityId(), c.name(), c.address());
+            long id =
+                    sql.insert(
+                                    "INSERT INTO cinema (city_id, name, address) VALUES (?, ?, ?)",
+                                    c.cityId(),
+                                    c.name(),
+                                    c.address())
+                            .orElseThrow();
+            return new Cinema(id, c.cityId(), c.name(), c.address());
         }
 
         @Override
@@ -142,14 +140,16 @@ final class SqlAdmin {
                         s.id());
                 return s;
             }
-            sql.update(
-                    "INSERT INTO screen (cinema_id, name, layout_json, capacity)"
-                            + " VALUES (?, ?, ?, ?)",
-                    s.cinemaId(),
-                    s.name(),
-                    layout,
-                    s.capacity());
-            return new Screen(lastId(sql), s.cinemaId(), s.name(), s.layout());
+            long id =
+                    sql.insert(
+                                    "INSERT INTO screen (cinema_id, name, layout_json, capacity)"
+                                            + " VALUES (?, ?, ?, ?)",
+                                    s.cinemaId(),
+                                    s.name(),
+                                    layout,
+                                    s.capacity())
+                            .orElseThrow();
+            return new Screen(id, s.cinemaId(), s.name(), s.layout());
         }
 
         @Override
@@ -201,26 +201,26 @@ final class SqlAdmin {
                 sql.update("DELETE FROM movie_language WHERE movie_id = ?", id);
                 sql.update("DELETE FROM movie_genre WHERE movie_id = ?", id);
             } else {
-                sql.update(
-                        "INSERT INTO movie (title, certificate, duration_minutes, release_date,"
-                                + " poster_url, description) VALUES (?, ?, ?, ?, ?, ?)",
-                        m.title(),
-                        m.certificate().name(),
-                        m.durationMinutes(),
-                        m.releaseDate().toString(),
-                        m.posterUrl(),
-                        m.description());
-                id = lastId(sql);
+                id =
+                        sql.insert(
+                                        "INSERT INTO movie (title, certificate, duration_minutes,"
+                                                + " release_date, poster_url, description)"
+                                                + " VALUES (?, ?, ?, ?, ?, ?)",
+                                        m.title(),
+                                        m.certificate().name(),
+                                        m.durationMinutes(),
+                                        m.releaseDate().toString(),
+                                        m.posterUrl(),
+                                        m.description())
+                                .orElseThrow();
             }
-            for (String language : m.languages()) {
-                sql.update(
-                        "INSERT INTO movie_language (movie_id, language) VALUES (?, ?)",
-                        id,
-                        language);
-            }
-            for (String genre : m.genres()) {
-                sql.update("INSERT INTO movie_genre (movie_id, genre) VALUES (?, ?)", id, genre);
-            }
+            long movieId = id;
+            sql.batch(
+                    "INSERT INTO movie_language (movie_id, language) VALUES (?, ?)",
+                    m.languages().stream().map(l -> new Object[] {movieId, l}).toList());
+            sql.batch(
+                    "INSERT INTO movie_genre (movie_id, genre) VALUES (?, ?)",
+                    m.genres().stream().map(g -> new Object[] {movieId, g}).toList());
             return new Movie(
                     id,
                     m.title(),

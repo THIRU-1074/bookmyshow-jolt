@@ -17,10 +17,13 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * {@code GET /api/shows/:id/events}: live seat updates over SSE (SPEC 7). Every connect starts with
- * a full {@code snapshot}, so a reconnecting browser never needs a missed event.
+ * {@code GET /api/shows/:id/events}: live seat updates over SSE (SPEC 7). Every connect, including
+ * a reconnect that sends {@code Last-Event-ID}, starts with a full {@code snapshot}, so a browser
+ * never needs a missed event; seat events then carry the hub's {@code id}.
  *
- * <p>TODO(jolt#70): resume from {@code Last-Event-ID} instead of a snapshot on every connect.
+ * <p>The subscription is taken before the snapshot is read. An event racing the read is then
+ * delivered after the snapshot; it may already be reflected there, which is harmless because each
+ * seat event states the seats' new status rather than a change to apply.
  */
 final class LiveModule implements RouteModule {
 
@@ -54,7 +57,6 @@ final class LiveModule implements RouteModule {
         long showId = Query.id(req, "id");
         // Both reads throw NOT_FOUND before the stream opens, so a bad id gets a normal 404.
         CatalogQueries.ShowDetail show = catalog.show(showId);
-        String snapshot = json(Dtos.SeatMapDto.of(catalog.seatMap(showId)));
         LiveSeats.Subscription sub =
                 live.subscribe(showId)
                         .orElseThrow(
@@ -62,6 +64,7 @@ final class LiveModule implements RouteModule {
                                         new ApiException(
                                                 503, "UNAVAILABLE", "Too many live streams"));
         try (sub) {
+            String snapshot = json(Dtos.SeatMapDto.of(catalog.seatMap(showId)));
             EventStream sse = res.sse();
             sse.retry(RETRY);
             sse.event("snapshot", snapshot);
@@ -78,7 +81,7 @@ final class LiveModule implements RouteModule {
         while (sub.isOpen() && clock.instant().isBefore(startsAt)) {
             LiveSeats.Message m = sub.poll(heartbeat);
             if (m != null) {
-                sse.event(m.name(), m.data());
+                sse.event(m.id(), m.name(), m.data());
             } else if (!sub.isOpen() || cancelled(showId)) {
                 return;
             } else {

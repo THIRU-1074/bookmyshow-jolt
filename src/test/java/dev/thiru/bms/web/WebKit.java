@@ -4,17 +4,16 @@ import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.fakes.FakeWorld;
 import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.User;
-import dev.thiru.bms.domain.port.IdempotencyStore;
 import dev.thiru.bms.domain.port.LiveSeats;
 import dev.thiru.bms.domain.port.PasswordHasher;
 import dev.thiru.bms.domain.port.RefreshTokenStore;
 import in.jolt.App;
+import in.jolt.IdempotencyStore;
 import in.jolt.Jolt;
 import in.jolt.JoltConfig;
 import in.jolt.test.JoltTest;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,11 +32,11 @@ final class WebKit {
 
     static final String SECRET = "test-secret-that-is-at-least-32-bytes-long";
     static final String PASSWORD = "correct-horse-battery";
-    static final String GOOD_SIGNATURE = "v1=good";
+    static final String WEBHOOK_SECRET = "webhook-secret-that-is-at-least-32-bytes";
 
     final FakeWorld world = FakeWorld.seeded();
     final MemoryRefreshTokens refreshTokens = new MemoryRefreshTokens();
-    final MemoryIdempotency idempotency = new MemoryIdempotency();
+    final IdempotencyStore idempotency = IdempotencyStore.inMemory();
     final FakeLive live = new FakeLive(5);
     final List<ProcessPaymentWebhook.Event> sentWebhooks = new CopyOnWriteArrayList<>();
     final AtomicBoolean dbUp = new AtomicBoolean(true);
@@ -62,7 +61,6 @@ final class WebKit {
                         idempotency,
                         world,
                         world,
-                        (ts, sig, body) -> GOOD_SIGNATURE.equals(sig),
                         event -> {
                             sentWebhooks.add(event);
                             return 200;
@@ -71,6 +69,7 @@ final class WebKit {
                         dbUp::get,
                         new WebDeps.Settings(
                                 SECRET,
+                                WEBHOOK_SECRET,
                                 mockGateway,
                                 Path.of("src/main/resources/views"),
                                 heartbeat));
@@ -181,18 +180,43 @@ final class WebKit {
     }
 
     JoltTest.Call webhook(String eventId, String type, String paymentId, long amount) {
+        byte[] body =
+                app.config()
+                        .jsonMapper()
+                        .write(
+                                Map.of(
+                                        "eventId", eventId,
+                                        "type", type,
+                                        "paymentId", paymentId,
+                                        "gatewayRef", "gw_" + paymentId,
+                                        "amount", amount,
+                                        "currency", "INR",
+                                        "occurredAt", FakeWorld.T0.toString()));
+        long now = world.clock.instant().getEpochSecond();
+        return signedWebhook(body, now, sign(now, body));
+    }
+
+    JoltTest.Call signedWebhook(byte[] body, long timestamp, String signature) {
         return http.post("/api/payments/webhook")
-                .header("Bms-Timestamp", "1")
-                .header("Bms-Signature", GOOD_SIGNATURE)
-                .json(
-                        Map.of(
-                                "eventId", eventId,
-                                "type", type,
-                                "paymentId", paymentId,
-                                "gatewayRef", "gw_" + paymentId,
-                                "amount", amount,
-                                "currency", "INR",
-                                "occurredAt", FakeWorld.T0.toString()));
+                .header("Content-Type", "application/json")
+                .header("Bms-Timestamp", Long.toString(timestamp))
+                .header("Bms-Signature", signature)
+                .body(body);
+    }
+
+    /** SPEC 7: {@code v1=<hex HMAC-SHA256(WEBHOOK_SECRET, timestamp + "." + rawBody)>}. */
+    static String sign(long timestamp, byte[] body) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(
+                    new javax.crypto.spec.SecretKeySpec(
+                            WEBHOOK_SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                            "HmacSHA256"));
+            mac.update((timestamp + ".").getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            return "v1=" + java.util.HexFormat.of().formatHex(mac.doFinal(body));
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** A CONFIRMED booking of seats A2 and A3 (2 x 150.00) for {@code token}; returns its id. */
@@ -265,39 +289,6 @@ final class WebKit {
         }
     }
 
-    static final class MemoryIdempotency implements IdempotencyStore {
-        private record Row(String fingerprint, Stored stored) {}
-
-        private final Map<String, Row> rows = new ConcurrentHashMap<>();
-
-        @Override
-        public synchronized Claim begin(long userId, String key, String fingerprint, Instant now) {
-            String k = userId + "/" + key;
-            Row row = rows.get(k);
-            if (row == null) {
-                rows.put(k, new Row(fingerprint, null));
-                return new Claim(Kind.FRESH, null);
-            }
-            if (!row.fingerprint().equals(fingerprint)) {
-                return new Claim(Kind.MISMATCH, null);
-            }
-            return row.stored() == null
-                    ? new Claim(Kind.IN_FLIGHT, null)
-                    : new Claim(Kind.REPLAY, row.stored());
-        }
-
-        @Override
-        public synchronized void complete(long userId, String key, Stored response) {
-            String k = userId + "/" + key;
-            rows.put(k, new Row(rows.get(k).fingerprint(), response));
-        }
-
-        @Override
-        public synchronized void release(long userId, String key) {
-            rows.remove(userId + "/" + key);
-        }
-    }
-
     static final class FakeLive implements LiveSeats {
         final List<Sub> subs = new CopyOnWriteArrayList<>();
         private final int max;
@@ -321,10 +312,10 @@ final class WebKit {
             return (int) subs.stream().filter(Sub::isOpen).count();
         }
 
-        void push(long showId, String name, String data) {
+        void push(long showId, String id, String name, String data) {
             subs.stream()
                     .filter(s -> s.showId == showId)
-                    .forEach(s -> s.queue.add(new Message(name, data)));
+                    .forEach(s -> s.queue.add(new Message(id, name, data)));
         }
 
         void endAll() {

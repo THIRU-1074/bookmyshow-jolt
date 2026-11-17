@@ -14,11 +14,15 @@ import dev.thiru.bms.domain.SeatLayout;
 import dev.thiru.bms.domain.ShowFormat;
 import dev.thiru.bms.domain.port.LiveSeats;
 import in.jolt.Middleware;
+import in.jolt.Page;
 import in.jolt.Params;
 import in.jolt.Request;
 import in.jolt.Response;
 import in.jolt.RouteModule;
 import in.jolt.Router;
+import in.jolt.Rules;
+import in.jolt.Validate;
+import in.jolt.Validator;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -256,10 +260,10 @@ final class AdminModule implements RouteModule {
         r.get(
                 p + "/users",
                 (req, res) -> {
-                    PageRequest page = PageRequest.of(req);
+                    Page page = Paging.request(req);
                     ok(
                             res,
-                            PageResult.of(
+                            Paging.result(
                                     users.list(Query.text(req, "q"), page.page(), page.size()),
                                     Dtos.AccountDto::of));
                 });
@@ -303,10 +307,10 @@ final class AdminModule implements RouteModule {
     }
 
     private void reportList(Request req, Response res) {
-        PageRequest page = PageRequest.of(req);
+        Page page = Paging.request(req);
         ok(
                 res,
-                PageResult.of(
+                Paging.result(
                         reports.shows(
                                 Query.text(req, "city"),
                                 instant(req, "from", false),
@@ -353,24 +357,29 @@ final class AdminModule implements RouteModule {
         return in.layout().toDomain();
     }
 
-    // TODO(jolt#61): declare required fields with nested validation rules.
+    /** Every missing field in one 422; the use case validates values (overlap, prices). */
+    static final Validator<ShowRequest> SHOW =
+            (in, r) -> {
+                required(r, "movieId", in.movieId());
+                required(r, "screenId", in.screenId());
+                required(r, "startsAt", in.startsAt());
+                required(r, "format", in.format());
+                // A null price is "prices.<category>: is required".
+                r.nested(
+                        "prices",
+                        in.prices(),
+                        (prices, pr) -> prices.forEach((cat, amount) -> required(pr, cat, amount)));
+            };
+
     static ShowRequest show(ShowRequest in) {
-        if (in.movieId() == null) {
-            throw ApiException.validation("movieId", "is required");
-        }
-        if (in.screenId() == null) {
-            throw ApiException.validation("screenId", "is required");
-        }
-        if (in.startsAt() == null) {
-            throw ApiException.validation("startsAt", "is required");
-        }
-        if (in.format() == null) {
-            throw ApiException.validation("format", "is required");
-        }
-        if (in.prices() == null) {
-            throw ApiException.validation("prices", "is required");
-        }
+        Validate.check(r -> SHOW.validate(in, r));
         return in;
+    }
+
+    private static void required(Rules r, String field, Object value) {
+        if (value == null) {
+            r.error(field, "is required");
+        }
     }
 
     private static Movie movie(long id, MovieRequest in) {

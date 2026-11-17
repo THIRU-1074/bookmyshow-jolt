@@ -51,15 +51,16 @@ final class SqlSeatLocks implements SeatLockRepository {
             throw DomainException.seatUnavailable(taken);
         }
         try {
-            for (SeatId seat : seats) {
-                sql.update(
-                        "INSERT INTO seat_lock (show_id, seat_id, hold_id, booking_id, state,"
-                                + " expires_at) VALUES (?, ?, ?, NULL, 'HELD', ?)",
-                        showId,
-                        seat.toString(),
-                        holdId,
-                        Sqls.ms(expiresAt));
-            }
+            sql.batch(
+                    "INSERT INTO seat_lock (show_id, seat_id, hold_id, booking_id, state,"
+                            + " expires_at) VALUES (?, ?, ?, NULL, 'HELD', ?)",
+                    seats.stream()
+                            .map(
+                                    seat ->
+                                            new Object[] {
+                                                showId, seat.toString(), holdId, Sqls.ms(expiresAt)
+                                            })
+                            .toList());
         } catch (RuntimeException e) {
             if (Sqls.isConstraint(e)) {
                 List<SeatId> clash = conflicts(showId, holdId, seats);

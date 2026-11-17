@@ -3,6 +3,7 @@ package dev.thiru.bms.adapters.db;
 import dev.thiru.bms.domain.port.RefreshTokenStore;
 import in.jolt.db.Db;
 import in.jolt.db.RowMapper;
+import in.jolt.db.TxMode;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Optional;
@@ -55,6 +56,7 @@ public final class SqlRefreshTokens implements RefreshTokenStore {
     @Override
     public boolean rotate(String oldHash, Entry next) {
         return db.inTransaction(
+                TxMode.IMMEDIATE,
                 tx -> {
                     int marked =
                             tx.update(
@@ -76,6 +78,7 @@ public final class SqlRefreshTokens implements RefreshTokenStore {
     @Override
     public Set<String> revokeSubject(String subject) {
         return db.inTransaction(
+                TxMode.IMMEDIATE,
                 tx -> {
                     Set<String> families =
                             new LinkedHashSet<>(

@@ -8,12 +8,10 @@ import dev.thiru.bms.adapters.db.Sqlite;
 import dev.thiru.bms.adapters.db.SqliteUnitOfWork;
 import dev.thiru.bms.adapters.ids.SecureIds;
 import dev.thiru.bms.adapters.live.LiveSeatHub;
-import dev.thiru.bms.adapters.live.SeatEvents;
-import dev.thiru.bms.adapters.payment.HmacVerifier;
-import dev.thiru.bms.adapters.payment.HmacWebhookVerifier;
 import dev.thiru.bms.adapters.payment.MockGatewayClient;
 import dev.thiru.bms.adapters.payment.MockGatewaySender;
 import dev.thiru.bms.adapters.payment.MockPaymentGateway;
+import dev.thiru.bms.adapters.payment.WebhookSigner;
 import dev.thiru.bms.application.Accounts;
 import dev.thiru.bms.application.ExpireSweep;
 import dev.thiru.bms.web.WebDeps;
@@ -37,9 +35,6 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Composition root: the only class that names concrete adapters. Startup follows SPEC section 9:
@@ -67,16 +62,14 @@ public final class Main {
     public static final class Booted implements AutoCloseable {
         private final App app;
         private final Db db;
-        private final SeatEvents seatEvents;
-        private final ScheduledExecutorService sweeper;
+        private final LiveSeatHub live;
         private volatile Server server;
         private boolean closed;
 
-        private Booted(App app, Db db, SeatEvents seatEvents, ScheduledExecutorService sweeper) {
+        private Booted(App app, Db db, LiveSeatHub live) {
             this.app = app;
             this.db = db;
-            this.seatEvents = seatEvents;
-            this.sweeper = sweeper;
+            this.live = live;
         }
 
         public App app() {
@@ -88,29 +81,25 @@ public final class Main {
             return server;
         }
 
-        /** Ends live streams, drains requests, stops the sweeper, then closes the pool. */
+        /**
+         * Ends live streams, then closes the server: it drains requests and runs the stop hooks,
+         * which stop the sweeper and close the pool. Never listened: closes the pool directly.
+         */
         @Override
         public synchronized void close() {
             if (closed) {
                 return;
             }
             closed = true;
-            // Open SSE streams would otherwise keep the drain waiting until their show starts.
-            seatEvents.closeAll();
+            // Open SSE streams would otherwise hold the drain for its full grace period; Jolt's
+            // stop hooks only run after the drain.
+            live.closeAll();
             Server s = server;
             if (s != null) {
                 s.close();
+            } else {
+                db.close();
             }
-            sweeper.shutdown();
-            try {
-                if (!sweeper.awaitTermination(10, TimeUnit.SECONDS)) {
-                    sweeper.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                sweeper.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
-            db.close();
             LOG.log(Level.INFO, "Stopped");
         }
     }
@@ -127,8 +116,11 @@ public final class Main {
 
     /** Builds the whole application on real adapters; the caller listens and closes. */
     public static Booted app(AppConfig config, JoltConfig jolt) {
+        // The UI is the React build in STATIC_DIR; views come from the class path unless VIEWS_DIR
+        // names a directory.
         Path staticDir = existingDir(config.staticDir(), "STATIC_DIR");
-        Path viewsDir = existingDir(config.viewsDir(), "VIEWS_DIR");
+        Path viewsDir =
+                config.viewsDir() == null ? null : existingDir(config.viewsDir(), "VIEWS_DIR");
         Clock clock = Clock.systemUTC();
 
         String url = Sqlite.withPragmas(config.dbUrl());
@@ -136,7 +128,6 @@ public final class Main {
         java.util.List<Integer> applied = SchemaRunner.migrate(url);
         LOG.log(Level.INFO, "Migrations applied: " + applied);
         Db db = Sqlite.open(url, DB_POOL, Duration.ofSeconds(10));
-        ScheduledExecutorService sweeper = null;
         try {
             SqliteUnitOfWork uow = new SqliteUnitOfWork(db);
             Pbkdf2PasswordHasher hasher = new Pbkdf2PasswordHasher();
@@ -147,14 +138,11 @@ public final class Main {
                 LOG.log(Level.INFO, created ? "Admin account created" : "Admin account kept");
             }
 
-            SeatEvents seatEvents = new SeatEvents(config.sseMaxStreams(), SSE_QUEUE);
-            LiveSeatHub live = new LiveSeatHub(seatEvents);
+            LiveSeatHub live = new LiveSeatHub(config.sseMaxStreams(), SSE_QUEUE);
             SqlRefreshTokens refreshTokens = new SqlRefreshTokens(db);
-            SqlIdempotency idempotency = new SqlIdempotency(db);
+            SqlIdempotency idempotency = new SqlIdempotency(db, clock);
 
-            sweeper = startSweeper(config, clock, uow, live, refreshTokens, idempotency);
-
-            HmacVerifier hmac = new HmacVerifier(config.webhookSecret(), clock);
+            WebhookSigner signer = new WebhookSigner(config.webhookSecret());
             URI webhook = URI.create(config.publicBaseUrl() + "/api/payments/webhook");
             HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
             WebDeps deps =
@@ -168,18 +156,22 @@ public final class Main {
                             idempotency,
                             new MockPaymentGateway(config.publicBaseUrl()),
                             live,
-                            new HmacWebhookVerifier(hmac),
                             new MockGatewaySender(
-                                    new MockGatewayClient(http, hmac, clock, webhook)),
+                                    new MockGatewayClient(http, signer, clock, webhook)),
                             live,
                             () -> dbUp(db),
                             new WebDeps.Settings(
                                     config.jwtSecret(),
+                                    config.webhookSecret(),
                                     config.mockGateway(),
                                     viewsDir,
                                     SSE_HEARTBEAT));
 
             App app = Jolt.create(joltConfig(config, jolt));
+            // Stop hooks run in reverse: the sweeper stops before the pool closes.
+            app.onStop(db::close);
+            live.metrics(app.metrics());
+            scheduleSweep(app, config, clock, uow, live, refreshTokens, idempotency);
             // Registers the SPEC 9 middleware chain first, then every API route.
             WebModules.install(app, deps);
             if (config.metricsToken() != null) {
@@ -189,21 +181,20 @@ public final class Main {
                 app.exposeRoutes();
             }
             serveStatic(app, staticDir);
-            return new Booted(app, db, seatEvents, sweeper);
+            return new Booted(app, db, live);
         } catch (RuntimeException | Error e) {
-            if (sweeper != null) {
-                sweeper.shutdownNow();
-            }
             db.close();
             throw e;
         }
     }
 
     /**
-     * TODO(jolt#58): use Jolt's scheduler once released. TODO(jolt#53): start and stop it from
-     * {@code app.onStart/onStop} instead of {@link Booted}.
+     * Expires holds and bookings, purges dead refresh tokens and old idempotency keys every {@code
+     * SWEEP_INTERVAL}, on Jolt's scheduler from {@code listen} until {@code Server.close()}. A
+     * failed run is logged by Jolt and the next one still happens.
      */
-    private static ScheduledExecutorService startSweeper(
+    private static void scheduleSweep(
+            App app,
             AppConfig config,
             Clock clock,
             SqliteUnitOfWork uow,
@@ -211,37 +202,22 @@ public final class Main {
             SqlRefreshTokens refreshTokens,
             SqlIdempotency idempotency) {
         ExpireSweep sweep = new ExpireSweep(uow, live, clock);
-        ScheduledExecutorService exec =
-                Executors.newSingleThreadScheduledExecutor(
-                        Thread.ofVirtual().name("bms-sweeper").factory());
-        long every = config.sweepInterval().toMillis();
-        exec.scheduleWithFixedDelay(
+        app.every(
+                "expiry-sweep",
+                config.sweepInterval(),
                 () -> {
-                    // An escaping exception would silently cancel every later run.
-                    try {
-                        ExpireSweep.Result r = sweep.run();
-                        refreshTokens.purgeExpired(clock.instant());
-                        idempotency.purgeBefore(clock.instant().minus(IDEMPOTENCY_RETENTION));
-                        if (r.holds() + r.bookings() > 0) {
-                            LOG.log(
-                                    Level.INFO,
-                                    "Expired "
-                                            + r.holds()
-                                            + " holds, "
-                                            + r.bookings()
-                                            + " bookings");
-                        }
-                    } catch (RuntimeException e) {
-                        LOG.log(Level.WARNING, "Expiry sweep failed", e);
+                    ExpireSweep.Result r = sweep.run();
+                    refreshTokens.purgeExpired(clock.instant());
+                    idempotency.purgeBefore(clock.instant().minus(IDEMPOTENCY_RETENTION));
+                    if (r.holds() + r.bookings() > 0) {
+                        LOG.log(
+                                Level.INFO,
+                                "Expired " + r.holds() + " holds, " + r.bookings() + " bookings");
                     }
-                },
-                every,
-                every,
-                TimeUnit.MILLISECONDS);
-        return exec;
+                });
     }
 
-    // TODO(jolt#68): serve from the classpath once Jolt supports it; until then STATIC_DIR.
+    /** The React build in STATIC_DIR, including {@code /css/app.css} for the server views. */
     private static void serveStatic(App app, Path staticDir) {
         Static files = Static.serve("/", staticDir).spaFallback("index.html");
         app.use(
@@ -317,7 +293,7 @@ public final class Main {
     }
 
     public static void main(String[] args) {
-        AppConfig config = AppConfig.fromEnv(System.getenv());
+        AppConfig config = AppConfig.load();
         LOG.log(Level.INFO, "Starting with " + config);
         Booted booted = app(config, JoltConfig.fromEnv());
         Server server = booted.listen(config.port());
