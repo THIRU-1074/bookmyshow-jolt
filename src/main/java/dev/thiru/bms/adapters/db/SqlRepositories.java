@@ -80,4 +80,14 @@ final class SqlRepositories implements Repositories {
     public AdminRepositories.Reports reports() {
         return new SqlAdmin.Reports(sql);
     }
+
+    @Override
+    public AdminRepositories.CinemaOwners cinemaOwners() {
+        return new SqlAdmin.CinemaOwners(sql);
+    }
+
+    @Override
+    public AdminRepositories.UserRoles userRoles() {
+        return new SqlAdmin.UserRoles(sql);
+    }
 }

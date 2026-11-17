@@ -39,7 +39,10 @@ public final class AdminReports {
 
     public Page<ShowReport> shows(String cityId, Instant from, Instant to, int page, int size) {
         return uow.inTransaction(
-                r -> r.reports().showStats(cityId, from, to, page, size).map(AdminReports::report));
+                r ->
+                        r.reports()
+                                .showStats(cityId, null, from, to, page, size)
+                                .map(AdminReports::report));
     }
 
     public ShowReportDetail show(long showId) {

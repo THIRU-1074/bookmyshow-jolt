@@ -12,6 +12,7 @@ import dev.thiru.bms.domain.Movie;
 import dev.thiru.bms.domain.Page;
 import dev.thiru.bms.domain.Payment;
 import dev.thiru.bms.domain.PaymentStatus;
+import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.Screen;
 import dev.thiru.bms.domain.SeatHold;
 import dev.thiru.bms.domain.SeatId;
@@ -107,6 +108,8 @@ public final class FakeWorld
         Map<String, Booking> bookings = new LinkedHashMap<>();
         Map<String, Payment> payments = new LinkedHashMap<>();
         Set<String> events = new HashSet<>();
+        // "cinemaId/userId" pairs, as in table cinema_owner.
+        Set<String> owners = new java.util.LinkedHashSet<>();
 
         Data copy() {
             Data d = new Data();
@@ -121,6 +124,7 @@ public final class FakeWorld
             d.bookings = new LinkedHashMap<>(bookings);
             d.payments = new LinkedHashMap<>(payments);
             d.events = new HashSet<>(events);
+            d.owners = new java.util.LinkedHashSet<>(owners);
             return d;
         }
     }
@@ -745,6 +749,7 @@ public final class FakeWorld
 
             public void deleteCinema(long id) {
                 d.cinemas.remove(id);
+                d.owners.removeIf(k -> k.startsWith(id + "/"));
             }
 
             public boolean cinemaHasShows(long id) {
@@ -835,10 +840,19 @@ public final class FakeWorld
     public AdminRepositories.Reports reports() {
         return new AdminRepositories.Reports() {
             public Page<AdminRepositories.ShowStat> showStats(
-                    String cityId, Instant from, Instant to, int page, int size) {
+                    String cityId, Long ownerId, Instant from, Instant to, int page, int size) {
                 return slice(
                         d.shows.values().stream()
                                 .filter(s -> cityId == null || playsIn(s, cityId))
+                                .filter(
+                                        s ->
+                                                ownerId == null
+                                                        || d.owners.contains(
+                                                                d.screens
+                                                                                .get(s.screenId())
+                                                                                .cinemaId()
+                                                                        + "/"
+                                                                        + ownerId))
                                 .filter(
                                         s ->
                                                 !s.startsAt().isBefore(from)
@@ -880,6 +894,7 @@ public final class FakeWorld
                         d.movies.get(s.movieId()).title(),
                         d.cinemas.get(screen.cinemaId()).name(),
                         s.startsAt(),
+                        s.status(),
                         screen.capacity(),
                         booked,
                         paid,
@@ -923,6 +938,78 @@ public final class FakeWorld
                                         b.status() == BookingStatus.CONFIRMED
                                                 && !b.updatedAt().isBefore(since))
                         .count();
+            }
+        };
+    }
+
+    @Override
+    public AdminRepositories.CinemaOwners cinemaOwners() {
+        return new AdminRepositories.CinemaOwners() {
+            public List<Cinema> cinemas(Long userId) {
+                return d.cinemas.values().stream()
+                        .filter(c -> userId == null || d.owners.contains(c.id() + "/" + userId))
+                        .sorted(Comparator.comparing(Cinema::name).thenComparing(Cinema::id))
+                        .toList();
+            }
+
+            public List<Long> cinemaIdsOf(long userId) {
+                return d.owners.stream()
+                        .filter(k -> k.endsWith("/" + userId))
+                        .map(k -> Long.parseLong(k.substring(0, k.indexOf('/'))))
+                        .sorted()
+                        .toList();
+            }
+
+            public boolean owns(long userId, long cinemaId) {
+                return d.owners.contains(cinemaId + "/" + userId);
+            }
+
+            public void link(long cinemaId, long userId) {
+                d.owners.add(cinemaId + "/" + userId);
+            }
+
+            public void unlink(long cinemaId, long userId) {
+                d.owners.remove(cinemaId + "/" + userId);
+            }
+
+            public void unlinkAll(long userId) {
+                d.owners.removeIf(k -> k.endsWith("/" + userId));
+            }
+        };
+    }
+
+    @Override
+    public AdminRepositories.UserRoles userRoles() {
+        return new AdminRepositories.UserRoles() {
+            public Page<User> page(String q, int page, int size) {
+                String needle = q == null ? null : q.strip().toLowerCase(Locale.ROOT);
+                return slice(
+                        d.users.values().stream()
+                                .filter(
+                                        u ->
+                                                needle == null
+                                                        || needle.isEmpty()
+                                                        || u.email().contains(needle)
+                                                        || u.name()
+                                                                .toLowerCase(Locale.ROOT)
+                                                                .contains(needle))
+                                .sorted(Comparator.comparingLong(User::id))
+                                .toList(),
+                        page,
+                        size);
+            }
+
+            public void saveRoles(long userId, Set<Role> roles) {
+                User u = d.users.get(userId);
+                d.users.put(
+                        userId,
+                        new User(
+                                u.id(),
+                                u.email(),
+                                u.passwordHash(),
+                                u.name(),
+                                roles,
+                                u.createdAt()));
             }
         };
     }
