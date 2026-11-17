@@ -340,6 +340,30 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 
 ## 10. Layering
 
+**Status: in migration** from the layer-first layout below to vertical feature slices around a thin hexagon ([ADR and class map](restructure/PLAN.md), [baseline](restructure/BASELINE.md)). Until a slice has moved, its code follows the current layout; both rule sets are enforced in the same build.
+
+### Target layout
+
+- `features.<slice>` (`catalog`, `live`, `accounts`, `booking`, `payments`, `admin` for owner and admin): each slice owns its routes, request and response types, use cases, SQL and tests. Simple CRUD is a transaction script (route, then SQL). Slices MUST NOT import each other or any adapter; a rule two slices need goes to `kernel`, and SQL MAY be duplicated.
+- `kernel`: pure shared rules and value objects (booking state machine, refund policy, hold and payment transitions, `SeatId`, `BookingCode`, seat layout and show invariants, money in paise). Imports only the JDK.
+- `ports`: only real I/O seams: `Db` (transaction with after-commit callbacks), `PaymentGateway`, `SeatEvents` and `LiveSeats`, `PasswordHasher`, `Ids`, `RefreshTokenStore`, `IdempotencyStore`, `WebhookVerifier`, `GatewayCallback`. No port per entity. `java.time.Clock` is the clock. Ports import only `kernel` and the JDK.
+- `adapters.<seam>`: one adapter per port. `Main` is the only class that names adapters.
+- `web`: shared HTTP plumbing only (problem+json, RBAC gate and `Permissions`, principal, paging, Idempotency-Key).
+- Wire types are generated from `api/openapi.yaml` (Java records and TypeScript types); shared shapes such as the seat map come from there, not from another slice.
+
+### Guardrails
+
+These replace line-by-line review; a change is done when all are green in `mvn -B verify`:
+
+- `TargetArchitectureTest`: the four dependency rules above, each proven by a fixture that breaks it.
+- Port contract tests (`dev.thiru.bms.contract`): one suite per port, run against both the in-memory fake and the real adapter.
+- `RbacMatrixTest`: registered routes, `Permissions` and `docs/RBAC.md` agree.
+- `ApiCoverageTest` and `ApiSchemaTest`: `api/openapi.yaml` has exactly the RBAC routes, and every live JSON response, problem and SSE payload matches it.
+- `RecordGeneratorTest`: generated records compile and match the records the server serialises.
+- `EndToEndTest`: the booking and owner journeys on real adapters over a socket.
+
+### Current layout (until migrated)
+
 `domain` (entities, rules, ports, `Clock` use) imports only the JDK. `application` (use cases, transaction boundary through a domain `UnitOfWork` port) imports `domain` only. `adapters.db` and `adapters.payment` implement ports with jolt-db and `java.net.http`. `web` holds `RouteModule`s, request/response records and `onError` mappers and imports `application` and `domain`. `Main` is the only class that names concrete adapters. `ArchitectureTest` enforces this.
 
 ## 11. Jolt features used

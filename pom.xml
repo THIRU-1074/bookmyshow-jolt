@@ -17,6 +17,7 @@
     <jolt.version>v0.4.1</jolt.version>
     <sqlite.version>3.45.2.0</sqlite.version>
     <junit.version>5.10.2</junit.version>
+    <snakeyaml.version>2.2</snakeyaml.version>
   </properties>
 
   <repositories>
@@ -63,6 +64,13 @@
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Reads api/openapi.yaml for the schema tests and the record generator; test scope only. -->
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
+      <version>${snakeyaml.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -130,4 +138,41 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Java records from api/openapi.yaml into target/generated-sources/openapi. Off by default so
+      verify stays as fast as before; RecordGeneratorTest already compiles the output on every
+      build. Run: mvn -Papi-codegen -DskipTests process-test-classes
+    -->
+    <profile>
+      <id>api-codegen</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>api-records</id>
+                <phase>process-test-classes</phase>
+                <goals>
+                  <goal>java</goal>
+                </goals>
+                <configuration>
+                  <mainClass>dev.thiru.bms.api.RecordGenerator</mainClass>
+                  <classpathScope>test</classpathScope>
+                  <arguments>
+                    <argument>${project.basedir}/api/openapi.yaml</argument>
+                    <argument>${project.build.directory}/generated-sources/openapi</argument>
+                    <argument>dev.thiru.bms.api.generated</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

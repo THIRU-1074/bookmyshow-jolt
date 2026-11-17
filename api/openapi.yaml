@@ -1,0 +1,1644 @@
+openapi: 3.0.3
+info:
+  title: BookMyShow on Jolt
+  version: 0.1.0
+  description: |
+    The one schema for the HTTP API (SPEC section 7, access rules in docs/RBAC.md). It describes the
+    JSON the server sends today, field for field; `ApiSchemaTest` boots the app and checks real
+    responses against it, and `ApiCoverageTest` keeps its operations equal to the RBAC matrix.
+
+    Conventions: times are ISO-8601 UTC instants; `localTime` is the city's wall clock as `HH:mm`
+    (`HH:mm:ss` when seconds are not zero); money is paise (`int64`) with currency `INR`.
+    Every error is `application/problem+json` (`Problem`).
+
+    `x-bms-access` repeats the RBAC.md access level of each operation.
+servers:
+  - url: /
+tags:
+  - name: auth
+  - name: catalog
+  - name: seats
+  - name: bookings
+  - name: payments
+  - name: admin
+  - name: owner
+  - name: ops
+
+paths:
+  # ---------------------------------------------------------------- auth
+  /api/auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      x-bms-access: PUBLIC
+      description: Creates an AUDIENCE account (roles are never read from the body) and signs in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Signed in; the refresh token is set in the `bms_refresh` cookie.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      x-bms-access: PUBLIC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Signed in; the refresh token is set in the `bms_refresh` cookie.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      x-bms-access: SELF_AUTHENTICATED
+      security:
+        - refreshCookie: []
+      responses:
+        '200':
+          description: A new access token; the refresh cookie is rotated.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/RefreshCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      x-bms-access: SELF_AUTHENTICATED
+      security:
+        - refreshCookie: []
+      responses:
+        '204':
+          description: Cookie cleared and its token family revoked.
+        default: { $ref: '#/components/responses/Problem' }
+  /api/me:
+    get:
+      tags: [auth]
+      operationId: me
+      x-bms-access: SIGNED_IN
+      security:
+        - bearer: []
+      responses:
+        '200':
+          description: The signed-in user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  # ---------------------------------------------------------------- catalog
+  /api/cities:
+    get:
+      tags: [catalog]
+      operationId: listCities
+      x-bms-access: PUBLIC
+      responses:
+        '200':
+          description: Every city, by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/City' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/movies:
+    get:
+      tags: [catalog]
+      operationId: listMovies
+      x-bms-access: PUBLIC
+      parameters:
+        - { name: city, in: query, schema: { type: string } }
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: q, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Genre' }
+        - { $ref: '#/components/parameters/Language' }
+        - name: certificate
+          in: query
+          explode: true
+          schema: { type: array, items: { $ref: '#/components/schemas/Certificate' } }
+        - { $ref: '#/components/parameters/Format' }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [release, title], default: release }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: A page of movies.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoviePage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/movies/{id}:
+    get:
+      tags: [catalog]
+      operationId: getMovie
+      x-bms-access: PUBLIC
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200':
+          description: The movie with its description.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MovieDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/movies/{id}/shows:
+    get:
+      tags: [catalog]
+      operationId: listShowTimes
+      x-bms-access: PUBLIC
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { name: city, in: query, required: true, schema: { type: string } }
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { $ref: '#/components/parameters/Language' }
+        - { $ref: '#/components/parameters/Format' }
+      responses:
+        '200':
+          description: The movie's shows on the day, grouped by cinema.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShowTimes' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/cinemas:
+    get:
+      tags: [catalog]
+      operationId: listCinemas
+      x-bms-access: PUBLIC
+      parameters:
+        - { name: city, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: A page of cinemas.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CinemaPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/cinemas/{id}:
+    get:
+      tags: [catalog]
+      operationId: getCinema
+      x-bms-access: PUBLIC
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200':
+          description: The cinema with its screens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CinemaDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/shows/{id}:
+    get:
+      tags: [catalog]
+      operationId: getShow
+      x-bms-access: PUBLIC
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200':
+          description: The show with movie, cinema, screen and prices.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShowDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  # ---------------------------------------------------------------- seats and live
+  /api/shows/{id}/seats:
+    get:
+      tags: [seats]
+      operationId: getSeatMap
+      x-bms-access: PUBLIC
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200':
+          description: 'The seat map; `ETag` and `Cache-Control: no-cache`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatMap' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/shows/{id}/events:
+    get:
+      tags: [seats]
+      operationId: streamSeatEvents
+      x-bms-access: PUBLIC
+      description: |
+        Server-sent events. On connect `retry: 3000` and a `snapshot` event, then:
+        `snapshot` (data `SeatMap`), `seat-held` (`SeatHeldEvent`), `seat-released`
+        (`SeatReleasedEvent`), `seat-booked` (`SeatBookedEvent`) and `heartbeat`
+        (`HeartbeatEvent`) every 15 s. Seat events carry an `id:` that increases in publish
+        order; the snapshot has none, because every connect (with or without `Last-Event-ID`)
+        starts from a fresh snapshot. 503 when `SSE_MAX_STREAMS` streams are open.
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200':
+          description: The event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        default: { $ref: '#/components/responses/Problem' }
+
+  # ---------------------------------------------------------------- holds and bookings
+  /api/holds:
+    post:
+      tags: [bookings]
+      operationId: createHold
+      x-bms-access: SIGNED_IN
+      security:
+        - bearer: []
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HoldRequest' }
+      responses:
+        '201':
+          description: The seats are held until `expiresAt`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Hold' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/holds/{id}:
+    delete:
+      tags: [bookings]
+      operationId: releaseHold
+      x-bms-access: OWNER
+      security:
+        - bearer: []
+      parameters:
+        - { $ref: '#/components/parameters/Uuid' }
+      responses:
+        '204':
+          description: Released.
+        default: { $ref: '#/components/responses/Problem' }
+  /api/bookings:
+    post:
+      tags: [bookings]
+      operationId: createBooking
+      x-bms-access: SIGNED_IN
+      security:
+        - bearer: []
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingRequest' }
+      responses:
+        '201':
+          description: A HELD booking made from the hold.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        default: { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [bookings]
+      operationId: listBookings
+      x-bms-access: SIGNED_IN
+      security:
+        - bearer: []
+      parameters:
+        - name: status
+          in: query
+          explode: true
+          schema: { type: array, items: { $ref: '#/components/schemas/BookingStatus' } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: The caller's bookings, newest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/bookings/{id}:
+    get:
+      tags: [bookings]
+      operationId: getBooking
+      x-bms-access: OWNER_OR_ADMIN
+      security:
+        - bearer: []
+      parameters:
+        - { $ref: '#/components/parameters/Uuid' }
+      responses:
+        '200':
+          description: The booking.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/bookings/{id}/checkout:
+    post:
+      tags: [bookings]
+      operationId: checkout
+      x-bms-access: OWNER
+      security:
+        - bearer: []
+      parameters:
+        - { $ref: '#/components/parameters/Uuid' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '201':
+          description: A payment and where to pay it.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Checkout' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/bookings/{id}/cancel:
+    post:
+      tags: [bookings]
+      operationId: cancelBooking
+      x-bms-access: OWNER
+      security:
+        - bearer: []
+      parameters:
+        - { $ref: '#/components/parameters/Uuid' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '200':
+          description: The cancelled booking with its `refundAmount`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/bookings/{id}/ticket:
+    get:
+      tags: [bookings]
+      operationId: getTicket
+      x-bms-access: OWNER
+      security:
+        - bearer: []
+      parameters:
+        - { $ref: '#/components/parameters/Uuid' }
+      responses:
+        '200':
+          description: The ticket page of a CONFIRMED booking.
+          content:
+            text/html:
+              schema: { type: string }
+        default: { $ref: '#/components/responses/Problem' }
+
+  # ---------------------------------------------------------------- payments
+  /api/payments/webhook:
+    post:
+      tags: [payments]
+      operationId: paymentWebhook
+      x-bms-access: SELF_AUTHENTICATED
+      description: Authenticated by `Bms-Signature` over the raw body, checked before parsing.
+      parameters:
+        - { name: Bms-Timestamp, in: header, required: true, schema: { type: string } }
+        - name: Bms-Signature
+          in: header
+          required: true
+          description: '`v1=<hex HMAC-SHA256(WEBHOOK_SECRET, timestamp + "." + rawBody)>`'
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookEvent' }
+      responses:
+        '200':
+          description: Processed, or a duplicate delivery.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResult' }
+        default: { $ref: '#/components/responses/Problem' }
+  /mock-gateway/{id}:
+    get:
+      tags: [payments]
+      operationId: mockGatewayPage
+      x-bms-access: PUBLIC
+      description: Only when `MOCK_GATEWAY=true`.
+      parameters:
+        - { $ref: '#/components/parameters/Uuid' }
+      responses:
+        '200':
+          description: The hosted checkout page.
+          content:
+            text/html:
+              schema: { type: string }
+        default: { $ref: '#/components/responses/Problem' }
+  /mock-gateway/{id}/complete:
+    post:
+      tags: [payments]
+      operationId: mockGatewayComplete
+      x-bms-access: PUBLIC
+      description: Signs and posts the webhook back to the app, then redirects. CSRF-protected.
+      parameters:
+        - { $ref: '#/components/parameters/Uuid' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteRequest' }
+          application/x-www-form-urlencoded:
+            schema: { $ref: '#/components/schemas/CompleteRequest' }
+      responses:
+        '303':
+          description: Redirect to `/bookings/{bookingId}`.
+          headers:
+            Location: { schema: { type: string } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  # ---------------------------------------------------------------- admin
+  /api/admin/cities:
+    post:
+      tags: [admin]
+      operationId: adminCreateCity
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CityRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/City' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/cities/{id}:
+    put:
+      tags: [admin]
+      operationId: adminRenameCity
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RenameRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/City' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/cinemas:
+    post:
+      tags: [admin]
+      operationId: adminCreateCinema
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CinemaRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Cinema' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/cinemas/{id}:
+    put:
+      tags: [admin]
+      operationId: adminUpdateCinema
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CinemaRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Cinema' }
+        default: { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [admin]
+      operationId: adminDeleteCinema
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '204': { description: Deleted. }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/cinemas/{id}/screens:
+    post:
+      tags: [admin]
+      operationId: adminCreateScreen
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScreenRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Screen' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/screens/{id}:
+    put:
+      tags: [admin]
+      operationId: adminUpdateScreen
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScreenRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Screen' }
+        default: { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [admin]
+      operationId: adminDeleteScreen
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '204': { description: Deleted. }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/movies:
+    post:
+      tags: [admin]
+      operationId: adminCreateMovie
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MovieRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/MovieDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/movies/{id}:
+    put:
+      tags: [admin]
+      operationId: adminUpdateMovie
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MovieRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/MovieDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [admin]
+      operationId: adminDeleteMovie
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '204': { description: Deleted. }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/shows:
+    post:
+      tags: [admin]
+      operationId: adminCreateShow
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShowRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Show' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/shows/{id}:
+    put:
+      tags: [admin]
+      operationId: adminUpdateShow
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShowRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Show' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/shows/{id}/cancel:
+    post:
+      tags: [admin]
+      operationId: adminCancelShow
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '200': { $ref: '#/components/responses/CancelShowResult' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/reports/shows:
+    get:
+      tags: [admin]
+      operationId: adminShowReports
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: city, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200': { $ref: '#/components/responses/ShowReportPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/reports/shows/{id}:
+    get:
+      tags: [admin]
+      operationId: adminShowReport
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200': { $ref: '#/components/responses/ShowReportDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/stats:
+    get:
+      tags: [admin]
+      operationId: adminStats
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      responses:
+        '200':
+          description: Live counters.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stats' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/users:
+    get:
+      tags: [admin]
+      operationId: adminListUsers
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: Users by id with roles and owned cinemas.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/users/{id}/roles/{role}:
+    put:
+      tags: [admin]
+      operationId: adminGrantRole
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { $ref: '#/components/parameters/RolePath' }
+      responses:
+        '200': { $ref: '#/components/responses/Account' }
+        default: { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [admin]
+      operationId: adminRevokeRole
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { $ref: '#/components/parameters/RolePath' }
+      responses:
+        '200': { $ref: '#/components/responses/Account' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/admin/cinemas/{id}/owners/{userId}:
+    put:
+      tags: [admin]
+      operationId: adminLinkOwner
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '200': { $ref: '#/components/responses/Account' }
+        default: { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [admin]
+      operationId: adminUnlinkOwner
+      x-bms-access: ADMIN
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '200': { $ref: '#/components/responses/Account' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  # ---------------------------------------------------------------- theatre owner
+  /api/owner/cinemas:
+    get:
+      tags: [owner]
+      operationId: ownerCinemas
+      x-bms-access: THEATRE_OWNER
+      security: [{ bearer: [] }]
+      responses:
+        '200':
+          description: The caller's cinemas with screens and layouts, by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OwnedCinema' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/owner/cinemas/{id}/screens:
+    post:
+      tags: [owner]
+      operationId: ownerCreateScreen
+      x-bms-access: THEATRE_OWNER
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScreenRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Screen' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/owner/screens/{id}:
+    put:
+      tags: [owner]
+      operationId: ownerUpdateScreen
+      x-bms-access: THEATRE_OWNER
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScreenRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Screen' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/owner/shows:
+    post:
+      tags: [owner]
+      operationId: ownerCreateShow
+      x-bms-access: THEATRE_OWNER
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShowRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Show' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/owner/shows/{id}/cancel:
+    post:
+      tags: [owner]
+      operationId: ownerCancelShow
+      x-bms-access: THEATRE_OWNER
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '200': { $ref: '#/components/responses/CancelShowResult' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/owner/reports/shows:
+    get:
+      tags: [owner]
+      operationId: ownerShowReports
+      x-bms-access: THEATRE_OWNER
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: city, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/From' }
+        - { $ref: '#/components/parameters/To' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200': { $ref: '#/components/responses/ShowReportPage' }
+        default: { $ref: '#/components/responses/Problem' }
+  /api/owner/reports/shows/{id}:
+    get:
+      tags: [owner]
+      operationId: ownerShowReport
+      x-bms-access: THEATRE_OWNER
+      security: [{ bearer: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+      responses:
+        '200': { $ref: '#/components/responses/ShowReportDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  # ---------------------------------------------------------------- ops
+  /api/health:
+    get:
+      tags: [ops]
+      operationId: health
+      x-bms-access: PUBLIC
+      responses:
+        '200':
+          description: Up.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+        '503':
+          description: The database check failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: bms_refresh
+
+  headers:
+    RefreshCookie:
+      description: '`bms_refresh=<token>; Path=/api/auth; HttpOnly; SameSite=Strict; Max-Age=2592000` (+ `Secure` over HTTPS).'
+      schema: { type: string }
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    Uuid:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    RolePath:
+      name: role
+      in: path
+      required: true
+      description: Case-insensitive role name.
+      schema: { $ref: '#/components/schemas/Role' }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, format: int32, minimum: 1, default: 1 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, format: int32, minimum: 1, maximum: 100, default: 20 }
+    Genre:
+      name: genre
+      in: query
+      explode: true
+      description: Repeated or comma separated.
+      schema: { type: array, items: { type: string } }
+    Language:
+      name: language
+      in: query
+      explode: true
+      description: Repeated or comma separated.
+      schema: { type: array, items: { type: string } }
+    Format:
+      name: format
+      in: query
+      explode: true
+      description: Repeated or comma separated.
+      schema: { type: array, items: { $ref: '#/components/schemas/ShowFormat' } }
+    From:
+      name: from
+      in: query
+      description: ISO instant or UTC date; absent means unbounded.
+      schema: { type: string }
+    To:
+      name: to
+      in: query
+      description: ISO instant or UTC date (the whole day); absent means unbounded.
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Scoped to the caller; a replay returns the stored response with `Idempotency-Replayed`; a request still running under the key is 409 `IDEMPOTENCY` with `Retry-After`.
+      schema: { type: string }
+
+  responses:
+    Problem:
+      description: An error.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    City:
+      description: The city.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/City' }
+    Cinema:
+      description: The cinema.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Cinema' }
+    Screen:
+      description: The screen with its layout.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Screen' }
+    MovieDetail:
+      description: The movie.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/MovieDetail' }
+    Show:
+      description: The show.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Show' }
+    CancelShowResult:
+      description: What the cancellation did (repeating it is a no-op).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CancelShowResult' }
+    ShowReportPage:
+      description: A page of show reports.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ShowReportPage' }
+    ShowReportDetail:
+      description: One show's report by category.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ShowReportDetail' }
+    Account:
+      description: The user as GET /api/admin/users shows it.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Account' }
+
+  schemas:
+    # ---------------- shared
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, detail, code]
+      properties:
+        type: { type: string, example: about:blank }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        code:
+          type: string
+          description: Stable code, e.g. VALIDATION, NOT_FOUND, SEAT_UNAVAILABLE, HOLD_EXPIRED, BOOKING_STATE, PAYMENT_IN_PROGRESS, SHOW_STARTED, LIMIT_EXCEEDED, VERSION_CONFLICT, CONFLICT, IDEMPOTENCY, RATE_LIMITED, UNAUTHENTICATED, FORBIDDEN, UNAVAILABLE, INTERNAL.
+        errors:
+          type: object
+          description: Field path to message, e.g. `seats[2]` or `rows[3].seats`.
+          additionalProperties: { type: string }
+        conflicts:
+          type: array
+          items: { type: string }
+        requestId: { type: string }
+    Role:
+      type: string
+      enum: [AUDIENCE, THEATRE_OWNER, ADMIN]
+    Certificate:
+      type: string
+      enum: [U, UA, A, S]
+    ShowFormat:
+      type: string
+      enum: [2D, 3D, IMAX]
+    ShowStatus:
+      type: string
+      enum: [SCHEDULED, CANCELLED]
+    BookingStatus:
+      type: string
+      enum: [HELD, PAYMENT_PENDING, CONFIRMED, EXPIRED, CANCELLED, REFUNDED]
+    Currency:
+      type: string
+      enum: [INR]
+    LocalTime:
+      type: string
+      pattern: '^[0-2][0-9]:[0-5][0-9](:[0-5][0-9])?$'
+      example: '19:30'
+
+    # ---------------- auth
+    RegisterRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email: { type: string }
+        password: { type: string }
+        name: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string }
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, name, roles]
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string }
+        name: { type: string }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+    AuthResponse:
+      type: object
+      additionalProperties: false
+      required: [user, accessToken, expiresIn]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        accessToken: { type: string }
+        expiresIn: { type: integer, format: int64, description: Seconds. }
+    TokenResponse:
+      type: object
+      additionalProperties: false
+      required: [accessToken, expiresIn]
+      properties:
+        accessToken: { type: string }
+        expiresIn: { type: integer, format: int64 }
+
+    # ---------------- catalog
+    City:
+      type: object
+      additionalProperties: false
+      required: [id, name, timeZone]
+      properties:
+        id: { type: string, example: bengaluru }
+        name: { type: string }
+        timeZone: { type: string, example: Asia/Kolkata }
+    MovieSummary:
+      type: object
+      additionalProperties: false
+      required: [id, title, languages, genres, certificate, durationMinutes, releaseDate, posterUrl]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        languages: { type: array, items: { type: string } }
+        genres: { type: array, items: { type: string } }
+        certificate: { $ref: '#/components/schemas/Certificate' }
+        durationMinutes: { type: integer, format: int32 }
+        releaseDate: { type: string, format: date }
+        posterUrl: { type: string }
+    MovieDetail:
+      type: object
+      additionalProperties: false
+      required: [id, title, languages, genres, certificate, durationMinutes, releaseDate, posterUrl, description]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        languages: { type: array, items: { type: string } }
+        genres: { type: array, items: { type: string } }
+        certificate: { $ref: '#/components/schemas/Certificate' }
+        durationMinutes: { type: integer, format: int32 }
+        releaseDate: { type: string, format: date }
+        posterUrl: { type: string }
+        description: { type: string }
+    MoviePage:
+      type: object
+      additionalProperties: false
+      required: [items, page, size, total, totalPages]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MovieSummary' } }
+        page: { type: integer, format: int32 }
+        size: { type: integer, format: int32 }
+        total: { type: integer, format: int64 }
+        totalPages: { type: integer, format: int32 }
+    Cinema:
+      type: object
+      additionalProperties: false
+      required: [id, cityId, name, address]
+      properties:
+        id: { type: integer, format: int64 }
+        cityId: { type: string }
+        name: { type: string }
+        address: { type: string }
+    CinemaPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, size, total, totalPages]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Cinema' } }
+        page: { type: integer, format: int32 }
+        size: { type: integer, format: int32 }
+        total: { type: integer, format: int64 }
+        totalPages: { type: integer, format: int32 }
+    ScreenSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, capacity]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        capacity: { type: integer, format: int32 }
+    CinemaDetail:
+      type: object
+      additionalProperties: false
+      required: [id, cityId, name, address, screens]
+      properties:
+        id: { type: integer, format: int64 }
+        cityId: { type: string }
+        name: { type: string }
+        address: { type: string }
+        screens: { type: array, items: { $ref: '#/components/schemas/ScreenSummary' } }
+    Slot:
+      type: object
+      additionalProperties: false
+      required: [id, startsAt, localTime, language, format, minPrice, availability]
+      properties:
+        id: { type: integer, format: int64 }
+        startsAt: { type: string, format: date-time }
+        localTime: { $ref: '#/components/schemas/LocalTime' }
+        language: { type: string }
+        format: { $ref: '#/components/schemas/ShowFormat' }
+        minPrice: { type: integer, format: int64 }
+        availability: { type: string, enum: [AVAILABLE, FILLING_FAST, SOLD_OUT] }
+    CinemaShows:
+      type: object
+      additionalProperties: false
+      required: [id, name, address, shows]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        address: { type: string }
+        shows: { type: array, items: { $ref: '#/components/schemas/Slot' } }
+    ShowTimes:
+      type: object
+      additionalProperties: false
+      required: [date, cinemas]
+      properties:
+        date: { type: string, format: date }
+        cinemas: { type: array, items: { $ref: '#/components/schemas/CinemaShows' } }
+    MovieRef:
+      type: object
+      additionalProperties: false
+      required: [id, title, certificate, durationMinutes]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        certificate: { $ref: '#/components/schemas/Certificate' }
+        durationMinutes: { type: integer, format: int32 }
+    NamedRef:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+    Price:
+      type: object
+      additionalProperties: false
+      required: [category, name, amount]
+      properties:
+        category: { type: string }
+        name: { type: string }
+        amount: { type: integer, format: int64 }
+    ShowDetail:
+      type: object
+      additionalProperties: false
+      required: [id, movie, cinema, screen, startsAt, localTime, language, format, prices, status]
+      properties:
+        id: { type: integer, format: int64 }
+        movie: { $ref: '#/components/schemas/MovieRef' }
+        cinema: { $ref: '#/components/schemas/NamedRef' }
+        screen: { $ref: '#/components/schemas/NamedRef' }
+        startsAt: { type: string, format: date-time }
+        localTime: { $ref: '#/components/schemas/LocalTime' }
+        language: { type: string }
+        format: { $ref: '#/components/schemas/ShowFormat' }
+        prices: { type: array, items: { $ref: '#/components/schemas/Price' } }
+        status: { $ref: '#/components/schemas/ShowStatus' }
+
+    # ---------------- seats and live
+    Seat:
+      type: object
+      additionalProperties: false
+      required: [id, number, category, status]
+      properties:
+        id: { type: string, example: C7 }
+        number: { type: integer, format: int32 }
+        category: { type: string }
+        status: { type: string, enum: [AVAILABLE, HELD, BOOKED, BLOCKED] }
+    SeatRow:
+      type: object
+      additionalProperties: false
+      required: [row, seats, aisleAfter]
+      properties:
+        row: { type: string }
+        seats: { type: array, items: { $ref: '#/components/schemas/Seat' } }
+        aisleAfter: { type: array, items: { type: integer, format: int32 } }
+    SeatMap:
+      type: object
+      additionalProperties: false
+      required: [showId, version, categories, rows, holdTtlSeconds]
+      properties:
+        showId: { type: integer, format: int64 }
+        version: { type: integer, format: int64, description: 'Content hash of the seat states, not a counter.' }
+        categories: { type: array, items: { $ref: '#/components/schemas/Price' } }
+        rows: { type: array, items: { $ref: '#/components/schemas/SeatRow' } }
+        holdTtlSeconds: { type: integer, format: int64 }
+    SeatHeldEvent:
+      type: object
+      additionalProperties: false
+      required: [showId, seats, until]
+      properties:
+        showId: { type: integer, format: int64 }
+        seats: { type: array, items: { type: string } }
+        until: { type: string, format: date-time }
+    SeatReleasedEvent:
+      type: object
+      additionalProperties: false
+      required: [showId, seats, reason]
+      properties:
+        showId: { type: integer, format: int64 }
+        seats: { type: array, items: { type: string } }
+        reason: { type: string, enum: [EXPIRED, RELEASED, CANCELLED] }
+    SeatBookedEvent:
+      type: object
+      additionalProperties: false
+      required: [showId, seats]
+      properties:
+        showId: { type: integer, format: int64 }
+        seats: { type: array, items: { type: string } }
+    HeartbeatEvent:
+      type: object
+      additionalProperties: false
+      required: [ts]
+      properties:
+        ts: { type: string, format: date-time }
+
+    # ---------------- holds and bookings
+    HoldRequest:
+      type: object
+      required: [showId, seats]
+      properties:
+        showId: { type: integer, format: int64 }
+        seats: { type: array, items: { type: string }, minItems: 1 }
+    Hold:
+      type: object
+      additionalProperties: false
+      required: [id, showId, seats, amount, currency, expiresAt]
+      properties:
+        id: { type: string }
+        showId: { type: integer, format: int64 }
+        seats: { type: array, items: { type: string } }
+        amount: { type: integer, format: int64 }
+        currency: { $ref: '#/components/schemas/Currency' }
+        expiresAt: { type: string, format: date-time }
+    BookingRequest:
+      type: object
+      required: [holdId]
+      properties:
+        holdId: { type: string }
+    ShowInfo:
+      type: object
+      additionalProperties: false
+      required: [id, movieTitle, cinemaName, screenName, startsAt, localTime]
+      properties:
+        id: { type: integer, format: int64 }
+        movieTitle: { type: string }
+        cinemaName: { type: string }
+        screenName: { type: string }
+        startsAt: { type: string, format: date-time }
+        localTime: { $ref: '#/components/schemas/LocalTime' }
+    BookingSeat:
+      type: object
+      additionalProperties: false
+      required: [id, category, price]
+      properties:
+        id: { type: string }
+        category: { type: string }
+        price: { type: integer, format: int64 }
+    Booking:
+      type: object
+      additionalProperties: false
+      required: [id, code, status, show, seats, amount, currency, refundAmount, expiresAt, version, createdAt]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        show: { $ref: '#/components/schemas/ShowInfo' }
+        seats: { type: array, items: { $ref: '#/components/schemas/BookingSeat' } }
+        amount: { type: integer, format: int64 }
+        currency: { $ref: '#/components/schemas/Currency' }
+        refundAmount: { type: integer, format: int64 }
+        expiresAt: { type: string, format: date-time }
+        version: { type: integer, format: int64 }
+        createdAt: { type: string, format: date-time }
+    BookingPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, size, total, totalPages]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Booking' } }
+        page: { type: integer, format: int32 }
+        size: { type: integer, format: int32 }
+        total: { type: integer, format: int64 }
+        totalPages: { type: integer, format: int32 }
+    Checkout:
+      type: object
+      additionalProperties: false
+      required: [paymentId, checkoutUrl, amount, currency, expiresAt]
+      properties:
+        paymentId: { type: string }
+        checkoutUrl: { type: string }
+        amount: { type: integer, format: int64 }
+        currency: { $ref: '#/components/schemas/Currency' }
+        expiresAt: { type: string, format: date-time }
+
+    # ---------------- payments
+    WebhookEvent:
+      type: object
+      required: [eventId, type, paymentId, amount, currency, occurredAt]
+      properties:
+        eventId: { type: string }
+        type: { type: string, enum: [payment.succeeded, payment.failed] }
+        paymentId: { type: string }
+        gatewayRef: { type: string }
+        amount: { type: integer, format: int64 }
+        currency: { type: string }
+        occurredAt: { type: string, format: date-time }
+    WebhookResult:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [duplicate]
+          properties:
+            duplicate: { type: boolean, enum: [true] }
+        - type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { $ref: '#/components/schemas/BookingStatus' }
+    CompleteRequest:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: { type: string, enum: [SUCCESS, FAILURE] }
+
+    # ---------------- admin and owner
+    LayoutCategory:
+      type: object
+      additionalProperties: false
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+    LayoutRow:
+      type: object
+      additionalProperties: false
+      required: [row, seats, category, aisleAfter, blocked]
+      properties:
+        row: { type: string }
+        seats: { type: integer, format: int32 }
+        category: { type: string }
+        aisleAfter: { type: array, items: { type: integer, format: int32 } }
+        blocked: { type: array, items: { type: integer, format: int32 } }
+    Layout:
+      type: object
+      additionalProperties: false
+      required: [categories, rows]
+      properties:
+        categories: { type: array, items: { $ref: '#/components/schemas/LayoutCategory' } }
+        rows: { type: array, items: { $ref: '#/components/schemas/LayoutRow' } }
+    Screen:
+      type: object
+      additionalProperties: false
+      required: [id, cinemaId, name, capacity, layout]
+      properties:
+        id: { type: integer, format: int64 }
+        cinemaId: { type: integer, format: int64 }
+        name: { type: string }
+        capacity: { type: integer, format: int32 }
+        layout: { $ref: '#/components/schemas/Layout' }
+    Show:
+      type: object
+      additionalProperties: false
+      required: [id, movieId, screenId, startsAt, language, format, prices, status]
+      properties:
+        id: { type: integer, format: int64 }
+        movieId: { type: integer, format: int64 }
+        screenId: { type: integer, format: int64 }
+        startsAt: { type: string, format: date-time }
+        language: { type: string }
+        format: { $ref: '#/components/schemas/ShowFormat' }
+        prices:
+          type: object
+          description: Category code to price in paise.
+          additionalProperties: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/ShowStatus' }
+    CityRequest:
+      type: object
+      required: [id, name, timeZone]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        timeZone: { type: string }
+    RenameRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+    CinemaRequest:
+      type: object
+      required: [name, address]
+      properties:
+        cityId: { type: string, description: 'Required on create, ignored on update.' }
+        name: { type: string }
+        address: { type: string }
+    ScreenRequest:
+      type: object
+      required: [name, layout]
+      properties:
+        name: { type: string }
+        layout: { $ref: '#/components/schemas/Layout' }
+    MovieRequest:
+      type: object
+      required: [title, languages, genres, certificate, durationMinutes, releaseDate, posterUrl]
+      properties:
+        title: { type: string }
+        languages: { type: array, items: { type: string } }
+        genres: { type: array, items: { type: string } }
+        certificate: { $ref: '#/components/schemas/Certificate' }
+        durationMinutes: { type: integer, format: int32 }
+        releaseDate: { type: string, format: date }
+        posterUrl: { type: string }
+        description: { type: string }
+    ShowRequest:
+      type: object
+      required: [movieId, screenId, startsAt, language, format, prices]
+      properties:
+        movieId: { type: integer, format: int64 }
+        screenId: { type: integer, format: int64 }
+        startsAt: { type: string, format: date-time }
+        language: { type: string }
+        format: { $ref: '#/components/schemas/ShowFormat' }
+        prices:
+          type: object
+          additionalProperties: { type: integer, format: int64 }
+    CancelShowResult:
+      type: object
+      additionalProperties: false
+      required: [showId, refunded, cancelled, holdsReleased]
+      properties:
+        showId: { type: integer, format: int64 }
+        refunded: { type: integer, format: int32 }
+        cancelled: { type: integer, format: int32 }
+        holdsReleased: { type: integer, format: int32 }
+    ShowReport:
+      type: object
+      additionalProperties: false
+      required: [showId, movieTitle, cinemaName, startsAt, status, capacity, booked, occupancyPercent, revenue, refunded]
+      properties:
+        showId: { type: integer, format: int64 }
+        movieTitle: { type: string }
+        cinemaName: { type: string }
+        startsAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/ShowStatus' }
+        capacity: { type: integer, format: int32 }
+        booked: { type: integer, format: int32 }
+        occupancyPercent: { type: number, format: double }
+        revenue: { type: integer, format: int64 }
+        refunded: { type: integer, format: int64 }
+    ShowReportPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, size, total, totalPages]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ShowReport' } }
+        page: { type: integer, format: int32 }
+        size: { type: integer, format: int32 }
+        total: { type: integer, format: int64 }
+        totalPages: { type: integer, format: int32 }
+    CategoryReport:
+      type: object
+      additionalProperties: false
+      required: [category, capacity, booked, revenue]
+      properties:
+        category: { type: string }
+        capacity: { type: integer, format: int32 }
+        booked: { type: integer, format: int32 }
+        revenue: { type: integer, format: int64 }
+    ShowReportDetail:
+      type: object
+      additionalProperties: false
+      required: [showId, movieTitle, cinemaName, startsAt, status, capacity, booked, occupancyPercent, revenue, refunded, byCategory]
+      properties:
+        showId: { type: integer, format: int64 }
+        movieTitle: { type: string }
+        cinemaName: { type: string }
+        startsAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/ShowStatus' }
+        capacity: { type: integer, format: int32 }
+        booked: { type: integer, format: int32 }
+        occupancyPercent: { type: number, format: double }
+        revenue: { type: integer, format: int64 }
+        refunded: { type: integer, format: int64 }
+        byCategory: { type: array, items: { $ref: '#/components/schemas/CategoryReport' } }
+    Stats:
+      type: object
+      additionalProperties: false
+      required: [activeHolds, bookingsConfirmedToday, sseStreams]
+      properties:
+        activeHolds: { type: integer, format: int64 }
+        bookingsConfirmedToday: { type: integer, format: int64 }
+        sseStreams: { type: integer, format: int32 }
+    Account:
+      type: object
+      additionalProperties: false
+      required: [id, email, name, roles, cinemaIds]
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string }
+        name: { type: string }
+        roles: { type: array, items: { $ref: '#/components/schemas/Role' } }
+        cinemaIds: { type: array, items: { type: integer, format: int64 } }
+    AccountPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, size, total, totalPages]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Account' } }
+        page: { type: integer, format: int32 }
+        size: { type: integer, format: int32 }
+        total: { type: integer, format: int64 }
+        totalPages: { type: integer, format: int32 }
+    OwnedCinema:
+      type: object
+      additionalProperties: false
+      required: [id, cityId, name, address, screens]
+      properties:
+        id: { type: integer, format: int64 }
+        cityId: { type: string }
+        name: { type: string }
+        address: { type: string }
+        screens: { type: array, items: { $ref: '#/components/schemas/Screen' } }
+
+    # ---------------- ops
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status, db]
+      properties:
+        status: { type: string, enum: [UP, DOWN] }
+        db: { type: string, enum: [UP, DOWN] }
