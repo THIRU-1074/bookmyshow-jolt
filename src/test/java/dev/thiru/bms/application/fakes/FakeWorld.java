@@ -466,10 +466,16 @@ public final class FakeWorld
             }
 
             public Optional<User> findByEmail(String email) {
-                return d.users.values().stream().filter(u -> u.email().equals(email)).findFirst();
+                // Like the SQL adapter: emails are stored lower-case and looked up lower-case.
+                String wanted = email.toLowerCase(Locale.ROOT);
+                return d.users.values().stream().filter(u -> u.email().equals(wanted)).findFirst();
             }
 
             public User insert(User user) {
+                // app_user.email is UNIQUE; the SQL adapter reports the clash as VALIDATION.
+                if (d.users.values().stream().anyMatch(u -> u.email().equals(user.email()))) {
+                    throw DomainException.validation("email", "is already registered");
+                }
                 User saved =
                         user.id() != 0
                                 ? user
@@ -520,6 +526,9 @@ public final class FakeWorld
             public List<SeatHold> findExpiredActive(Instant now, int limit) {
                 return d.holds.values().stream()
                         .filter(h -> h.status() == HoldStatus.ACTIVE && h.isExpiredAt(now))
+                        .sorted(
+                                Comparator.comparing(SeatHold::expiresAt)
+                                        .thenComparing(SeatHold::id))
                         .limit(limit)
                         .toList();
             }
@@ -556,7 +565,7 @@ public final class FakeWorld
                         freed.add(s);
                     }
                 }
-                return freed;
+                return freed.stream().sorted().toList();
             }
 
             public List<SeatId> deleteByHold(String holdId) {
@@ -612,11 +621,17 @@ public final class FakeWorld
             }
 
             public List<SeatLock> findByHold(String holdId) {
-                return d.locks.values().stream().filter(l -> l.holdId().equals(holdId)).toList();
+                return d.locks.values().stream()
+                        .filter(l -> l.holdId().equals(holdId))
+                        .sorted(Comparator.comparing(SeatLock::seat))
+                        .toList();
             }
 
             public List<SeatLock> findByShow(long showId) {
-                return d.locks.values().stream().filter(l -> l.showId() == showId).toList();
+                return d.locks.values().stream()
+                        .filter(l -> l.showId() == showId)
+                        .sorted(Comparator.comparing(SeatLock::seat))
+                        .toList();
             }
 
             public Map<Long, Integer> countLive(Collection<Long> showIds, Instant now) {
@@ -673,6 +688,7 @@ public final class FakeWorld
             public List<Booking> findOpenExpired(Instant now, int limit) {
                 return d.bookings.values().stream()
                         .filter(b -> b.status().isOpen() && b.isExpiredAt(now))
+                        .sorted(Comparator.comparing(Booking::expiresAt).thenComparing(Booking::id))
                         .limit(limit)
                         .toList();
             }
