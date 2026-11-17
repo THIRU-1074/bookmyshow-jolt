@@ -4,6 +4,7 @@ import dev.thiru.bms.application.CatalogQueries;
 import dev.thiru.bms.domain.Certificate;
 import dev.thiru.bms.domain.ShowFormat;
 import dev.thiru.bms.domain.port.CatalogRepositories.MovieQuery;
+import in.jolt.Page;
 import in.jolt.Request;
 import in.jolt.Response;
 import in.jolt.RouteModule;
@@ -35,10 +36,10 @@ final class CatalogModule implements RouteModule {
         r.get(
                 "/api/cinemas",
                 (req, res) -> {
-                    PageRequest page = PageRequest.of(req);
+                    Page page = Paging.request(req);
                     cached(
                             res,
-                            PageResult.of(
+                            Paging.result(
                                     catalog.cinemas(
                                             Query.text(req, "city"), page.page(), page.size()),
                                     Dtos.CinemaDto::of));
@@ -61,7 +62,7 @@ final class CatalogModule implements RouteModule {
     }
 
     private void movies(Request req, Response res) {
-        PageRequest page = PageRequest.of(req);
+        Page page = Paging.request(req);
         CatalogQueries.MovieFilter filter =
                 new CatalogQueries.MovieFilter(
                         Query.text(req, "city"),
@@ -77,7 +78,7 @@ final class CatalogModule implements RouteModule {
                         sort(Query.text(req, "sort")));
         cached(
                 res,
-                PageResult.of(
+                Paging.result(
                         catalog.movies(filter, page.page(), page.size()), Dtos.MovieSummary::of));
     }
 

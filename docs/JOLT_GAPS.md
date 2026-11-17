@@ -11,7 +11,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `web.IdempotencyFilter` over the `IdempotencyStore` port | closed upstream, awaiting release v0.4.0 (bump jolt.version, remove workaround) |
 | Schema migrations | [#55](https://github.com/THIRU-1074/custom-Http-Server/issues/55) | `adapters.db.SchemaRunner` | in progress |
 | IMMEDIATE tx, generated keys, batch, optimistic update | [#56](https://github.com/THIRU-1074/custom-Http-Server/issues/56) | `adapters.db` (JDBC URL `transaction_mode=IMMEDIATE`, row-count checks) | in progress |
-| Pagination helper | [#57](https://github.com/THIRU-1074/custom-Http-Server/issues/57) | `web.PageRequest`, `web.PageResult` | open |
+| Pagination helper | [#57](https://github.com/THIRU-1074/custom-Http-Server/issues/57) | `web.Paging`: Jolt `Page` and `Page.Result` build the envelope; the app still checks `page` and `size` itself because `Page.of` answers 400 without naming the field and silently caps `size`, where SPEC 7 wants 422 `errors.page`/`errors.size` | done (v0.4.1), parameter check kept |
 | Scheduled background tasks | [#58](https://github.com/THIRU-1074/custom-Http-Server/issues/58) | hold expiry sweeper in `Main` | open |
 | Webhook signature verification | [#59](https://github.com/THIRU-1074/custom-Http-Server/issues/59) | `adapters.payment.HmacVerifier` | open |
 | Configuration loader | [#60](https://github.com/THIRU-1074/custom-Http-Server/issues/60) | `AppConfig.fromEnv()` | open |
@@ -36,7 +36,6 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | #54 | `src/main/java/dev/thiru/bms/web/IdempotencyFilter.java`, `adapters/db/SqlIdempotency.java`, `src/main/resources/db/migrations/V3__idempotency.sql` |
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
 | #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
-| #57 | `src/main/java/dev/thiru/bms/web/PageRequest.java`, `PageResult.java` |
 | #58 | `src/main/java/dev/thiru/bms/Main.java` (`startSweeper` on a virtual-thread `ScheduledExecutorService`) |
 | #59 | `src/main/java/dev/thiru/bms/adapters/payment/HmacVerifier.java`, `HmacWebhookVerifier.java`, `MockGatewayClient.java` (signing) |
 | #60 | `src/main/java/dev/thiru/bms/AppConfig.java` |

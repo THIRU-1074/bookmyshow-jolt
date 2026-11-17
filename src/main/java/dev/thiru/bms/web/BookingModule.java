@@ -9,6 +9,7 @@ import dev.thiru.bms.domain.Booking;
 import dev.thiru.bms.domain.BookingStatus;
 import dev.thiru.bms.domain.SeatId;
 import in.jolt.Middleware;
+import in.jolt.Page;
 import in.jolt.Request;
 import in.jolt.Response;
 import in.jolt.RouteModule;
@@ -139,12 +140,12 @@ final class BookingModule implements RouteModule {
     }
 
     private void list(Request req, Response res) {
-        PageRequest page = PageRequest.of(req);
+        Page page = Paging.request(req);
         var statuses =
                 Query.list(req, "status", s -> BookingStatus.valueOf(s.toUpperCase(Locale.ROOT)));
         res.noStore()
                 .json(
-                        PageResult.of(
+                        Paging.result(
                                 queries.list(
                                         Principal.of(req).userId(),
                                         statuses,

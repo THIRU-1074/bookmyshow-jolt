@@ -14,6 +14,7 @@ import dev.thiru.bms.domain.SeatLayout;
 import dev.thiru.bms.domain.ShowFormat;
 import dev.thiru.bms.domain.port.LiveSeats;
 import in.jolt.Middleware;
+import in.jolt.Page;
 import in.jolt.Params;
 import in.jolt.Request;
 import in.jolt.Response;
@@ -256,10 +257,10 @@ final class AdminModule implements RouteModule {
         r.get(
                 p + "/users",
                 (req, res) -> {
-                    PageRequest page = PageRequest.of(req);
+                    Page page = Paging.request(req);
                     ok(
                             res,
-                            PageResult.of(
+                            Paging.result(
                                     users.list(Query.text(req, "q"), page.page(), page.size()),
                                     Dtos.AccountDto::of));
                 });
@@ -303,10 +304,10 @@ final class AdminModule implements RouteModule {
     }
 
     private void reportList(Request req, Response res) {
-        PageRequest page = PageRequest.of(req);
+        Page page = Paging.request(req);
         ok(
                 res,
-                PageResult.of(
+                Paging.result(
                         reports.shows(
                                 Query.text(req, "city"),
                                 instant(req, "from", false),
