@@ -180,6 +180,8 @@ Access tokens live 15 min. The refresh token (30 days) is only in cookie `bms_re
 
 ### Catalog (public, `ETag` and `Cache-Control: public, max-age=60`)
 
+The server also keeps `GET /api/cities`, `GET /api/movies` and `GET /api/movies/{id}/shows` in a 60 s in-memory cache keyed by path and query (`TtlCache`), so they are at most as stale as `max-age` already allows. Any successful admin or owner write clears it. The seat map is never cached.
+
 | Method, path | Query | Response |
 |---|---|---|
 | GET /api/cities | - | `[{id, name, timeZone}]` |
@@ -218,7 +220,7 @@ Booking JSON: `{id, code, status, show:{id, movieTitle, cinemaName, screenName, 
 
 ### Live seat updates: `GET /api/shows/{id}/events`
 
-`text/event-stream`, public, at most `SSE_MAX_STREAMS` (default 1000) open streams; over that 503. On connect the server sends `retry: 3000` and a `snapshot` event, then:
+`text/event-stream`, public, at most `SSE_MAX_STREAMS` (default 1000) open streams; over that 503. On every connect, including a reconnect with `Last-Event-ID`, the server sends `retry: 3000` and a `snapshot` event, then the seat events below. Seat events carry an `id:` that increases in publish order; `snapshot` and `heartbeat` carry none. A reconnect always gets a fresh snapshot rather than a replay, since the snapshot already holds the full state:
 
 | Event | Data |
 |---|---|
@@ -269,7 +271,7 @@ Owner POSTs need an `Idempotency-Key`. Movies and cities come from the public GE
 ### Ops
 
 - `GET /api/health`: 200 `{"status":"UP","db":"UP"}`, 503 when `SELECT 1` fails.
-- `/_jolt/health` and `/_jolt/metrics` from `app.exposeMetrics(guard)`; the guard requires `Authorization: Bearer <METRICS_TOKEN>`; without `METRICS_TOKEN` metrics are not exposed.
+- `/_jolt/health` and `/_jolt/metrics` from `app.exposeMetrics(guard)`; the guard requires `Authorization: Bearer <METRICS_TOKEN>` on `/_jolt/metrics`; without `METRICS_TOKEN` neither is exposed. `/_jolt/health` includes the `db` check (`app.health`): 200 `{"status":"UP","checks":{"db":"UP"}}`, else 503. Besides Jolt's own series, metrics carry `bms_sse_subscribers`, `bms_sse_dropped_total`, `bms_catalog_cache_*` and `jolt_task_*{task="expiry-sweep"}`.
 - `/_jolt/routes` and `/_jolt/openapi.json` (`app.exposeRoutes()`) only when `JOLT_DEV=1`.
 
 ### Rate limits (429 with `Retry-After`)
@@ -313,7 +315,7 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 - **Docker:** multi-stage `Dockerfile` (Maven build, then `eclipse-temurin:21-jre`), non-root user, volume `/data` for the database, `HEALTHCHECK` on `/api/health`.
 - **Startup:** fail fast on a missing or short secret, then run migrations, seed the admin, start the sweeper, then listen. Shutdown drains requests, stops the sweeper and closes the pool.
 
-**Environment variables**
+**Environment variables** (read through Jolt's `Config.load()`, so an `application.properties` file may also set them; the environment wins)
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -323,7 +325,7 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 | `JWT_SECRET` | required | at least 32 bytes |
 | `WEBHOOK_SECRET` | required | at least 32 bytes |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | unset | both set: create or keep that admin on start; password at least 12 chars |
-| `HOLD_TTL` | `PT7M` | ISO-8601 duration |
+| `HOLD_TTL` | `PT7M` | ISO-8601 duration, or Jolt's short form such as `7m` (all durations) |
 | `PAYMENT_WINDOW` | `PT5M` | |
 | `MAX_SEATS` | `10` | |
 | `SWEEP_INTERVAL` | `PT30S` | |
@@ -333,7 +335,7 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 | `MOCK_GATEWAY` | `true` | |
 | `METRICS_TOKEN` | unset | enables `/_jolt/metrics` |
 | `TRUST_PROXY` | unset | comma-separated CIDRs for `JoltConfig.trustProxy` |
-| `STATIC_DIR`, `VIEWS_DIR` | `src/main/resources/static`, `src/main/resources/views` | interim, see jolt#68 |
+| `STATIC_DIR`, `VIEWS_DIR` | unset: `/static` and `/views` on the class path | a directory overrides the class path; the Docker image sets both |
 
 ## 10. Layering
 
@@ -341,45 +343,43 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 
 ## 11. Jolt features used
 
+Jolt `v0.4.1` (`jolt.version` in `pom.xml`).
+
 | Requirement | Jolt API |
 |---|---|
 | Routing, modules, typed handlers | `Jolt.create`, `app.module`, `RouteModule`, `Router`, `Reply`, `Params` |
-| Error mapping, problem+json | `app.onError`, `JoltConfig.problemJson(true)`, `HttpException` |
-| Validation | `Validate.with`, `Rules`, `Validate.check` |
-| Typed params | `req.param(name, Long.class)`, `req.query(name, type, default)` |
+| Error mapping, problem+json | `app.onError(Type, (e, req) -> ...)`, `JoltConfig.problemJson(true)`, `HttpException` (Jolt adds `requestId`) |
+| Validation | `Validate.check`, `Validator`, `Rules` (`each`, `nested`) |
+| Typed and repeated params | `req.param(name, Long.class)`, `req.query(name, type, default)`, `req.queryAll` |
+| Pagination envelope | `Page`, `Page.Result` |
+| Configuration | `Config.load()` |
 | Auth | `JwtAuth.hs256`, `RefreshTokens` with a SQLite `RefreshStore`, `PasswordHasher`, `Auth.requireRole` |
 | CSRF on cookie routes | `Csrf.protect()` |
 | Hardening | `SecurityHeaders`, `RateLimit.perIp/perKey`, `RequestId`, `Logger.requests()`, `JoltConfig.fromEnv` |
-| Caching and size | `res.json(x).etag()`, `res.cache(Duration)`, `res.noStore()`, `Compress.gzip()` |
-| UI and ticket | `Static.serve(...).spaFallback`, `app.views`, `res.render` |
-| Live seats | `res.sse()`, `EventStream.event/comment/retry`, `config.streamTimeouts` |
-| Persistence | `Db.open`, `query`, `queryOne`, `update`, `inTransaction` |
-| Ops | `app.exposeMetrics(guard)`, `app.exposeRoutes()`, `app.openApi()`, `Server.closeOnShutdown()` |
-| Tests | `JoltTest.of(app)`, `session()`, `jsonEquals`, `app.listen(0)` for socket tests |
-| From v0.4.0 | `req.queryAll`, `app.onStart/onStop/lifecycle`, `Idempotency.keys()`, `Migrations.runClasspath`, `TxMode.IMMEDIATE`, `insert`, `batch`, `tx.updateExpecting` |
+| Idempotency-Key | `Idempotency.keys().store(...).required()` with a SQLite `IdempotencyStore` |
+| Webhook signatures | `Webhooks.hmacSha256(secret, "Bms-Signature").prefix("v1=").timestampHeader("Bms-Timestamp")` |
+| Caching and size | `res.json(x).etag()`, `res.cache(Duration)`, `res.noStore()`, `TtlCache`, `Compress.gzip()` |
+| UI and ticket | `Static.classpath("/", "/static").spaFallback`, `app.viewsClasspath`, `res.render` (`Static.serve` and `app.views` when `STATIC_DIR`/`VIEWS_DIR` are set) |
+| Live seats | `Hub` (`subscribe`, `publish`, `metrics`), `res.sse()`, `EventStream.event(id, name, data)`, `retry`, `config.streamTimeouts` |
+| Persistence | `Db.open`, `query`, `queryOne`, `update`, `insert`, `batch`, `updateExpecting`, `inTransaction(TxMode.IMMEDIATE, ...)`, `busyTimeout` |
+| Background work and lifecycle | `app.every`, `app.onStop` |
+| Ops | `app.exposeMetrics(guard)`, `app.health`, `app.metrics()`, `app.exposeRoutes()`, `app.openApi()` |
+| Tests | `JoltTest.of(app)`, `session()`, `jsonEquals`, `maxEvents`, `timeout`, `events()`, `app.listen(0)` for socket tests |
 
 ## 12. Known gaps
 
-Each interim workaround lives behind an adapter or a single class, carries `TODO(jolt#N)` and has a row in `docs/JOLT_GAPS.md`. It is deleted when the fix ships.
+Every Jolt gap from #52 to #77 is fixed in v0.4.1 and its workaround removed; `docs/JOLT_GAPS.md` records how each was replaced. What remains is listed there with a reason:
 
-| Requirement | Jolt issue | Interim workaround |
+| Requirement | Jolt | What the app still does |
 |---|---|---|
-| Repeated query params | #52 `req.queryAll` | accept comma lists only; the UI sends comma lists |
-| Start/stop hooks | #53 lifecycle | `Main` starts the sweeper before `listen` and stops it in a shutdown hook |
-| Idempotency-Key | #54 `Idempotency` | `web.IdempotencyFilter` over an `idempotency_key` table |
-| Migrations | #55 `Migrations` | `adapters.db.SchemaRunner` applying classpath `V<n>__*.sql` into `schema_history` |
-| IMMEDIATE tx, generated keys, batch, optimistic update | #56 | JDBC URL `?transaction_mode=IMMEDIATE`; `SELECT last_insert_rowid()`; row-count check that throws a domain `VersionConflict` |
-| Pagination | #57 `Page` | `web.PageRequest` and `web.PageResult` records |
-| Sweeper | #58 scheduler | `ScheduledExecutorService` on one virtual-thread factory |
-| Webhook signatures | #59 | `adapters.payment.HmacVerifier` (also signs for the mock gateway) |
-| Config | #60 loader | `AppConfig.fromEnv()` record |
-| Nested validation | #61 | manual loops emitting `rows[i].field` keys |
-| Fan-out to SSE viewers | #62 hub | `adapters.live.SeatEvents` with a bounded queue per subscriber |
-| Cache | #63 | not needed in v1 (ETag is enough) |
-| Static files and views from the jar | #68 | serve `STATIC_DIR`/`VIEWS_DIR` from the filesystem; Docker copies them to `/app` |
-| SSE in `JoltTest` | #69 | SSE tests over a real loopback socket (`app.listen(0)` and `HttpClient`) |
-| SSE event ids, `Last-Event-ID` | #70 | send a full `snapshot` on every (re)connect |
-| App metrics and health checks | #71 | `GET /api/health` with a DB check, `GET /api/admin/stats` |
+| Migrations | `Migrations` (#55) keeps its own history table | `adapters.db.SchemaRunner` stays, so databases it already migrated keep working |
+| Paging errors | `Page.of` answers 400 without the field and caps `size` | `web.Paging` checks `page` and `size` and answers 422 with `errors.page`/`errors.size` |
+| Idempotency errors | `Idempotency` writes plain-text 400/409/422 and replays the first request's `X-Request-Id` | `web.Idempotent` re-throws them as problem+json `IDEMPOTENCY` and keeps the current request id |
+| Expected errors in the log | mapped non-`HttpException` errors are logged at WARNING with a stack trace | `web.Problems.middleware` turns domain errors into `HttpException`s and logs unexpected ones by class and request id |
+| SSE snapshot and shutdown | `Hub.sse` cannot send a snapshot first; nothing ends a topic's subscribers | `adapters.live.LiveSeatHub` subscribes and the route writes SSE itself; `Main` ends streams before the drain |
+| Health URL | checks run only behind `/_jolt/health` | `GET /api/health` keeps its shape for Render on the same DB check |
+| Static files in Docker | none | `STATIC_DIR`/`VIEWS_DIR` overrides stay while the image copies the UI outside the jar |
+| Webhook signing for the mock gateway | verification only | `adapters.payment.WebhookSigner` |
 
 ## 13. Test plan (per lane)
 
