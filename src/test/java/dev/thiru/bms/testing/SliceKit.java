@@ -167,7 +167,7 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
             return this;
         }
 
-        /** Free-form registration on the booted kit (the legacy web routes use this). */
+        /** Free-form registration on the booted kit (the full route table uses this). */
         public Builder mount(Consumer<SliceKit> mount) {
             mounts.add(mount);
             return this;

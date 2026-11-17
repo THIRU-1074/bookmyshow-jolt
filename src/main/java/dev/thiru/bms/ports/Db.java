@@ -9,11 +9,11 @@ import java.util.function.Function;
 
 /**
  * The transaction seam for feature slices: one writer transaction per call (SPEC 5.2), committed
- * when the work returns and rolled back when it throws, with the work's own exception. Replaces
- * {@code UnitOfWork} + {@code Repositories}: a slice runs its own SQL through {@link Tx}.
+ * when the work returns and rolled back when it throws, with the work's own exception. There is no
+ * port per entity: a slice runs its own SQL through {@link Tx}.
  *
- * <p>{@link Tx#afterCommit} replaces {@code EventBuffer}: work queues side effects such as seat
- * events on the transaction, and they run only once it has committed.
+ * <p>{@link Tx#afterCommit}: work queues side effects such as seat events on the transaction, and
+ * they run only once it has committed.
  */
 public interface Db {
 

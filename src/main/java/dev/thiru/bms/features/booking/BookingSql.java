@@ -238,7 +238,7 @@ final class BookingSql {
                 limit);
     }
 
-    /** As the legacy writer stores it: a compact JSON array of seat ids. */
+    /** As it is stored: a compact JSON array of seat ids. */
     static String seatsJson(List<SeatId> seats) {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < seats.size(); i++) {

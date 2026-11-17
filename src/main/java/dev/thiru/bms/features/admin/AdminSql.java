@@ -258,7 +258,7 @@ final class AdminSql {
         return tx.queryOne("SELECT " + USER_COLS + " FROM app_user WHERE id = ?", USER, id);
     }
 
-    // ---- JSON columns, byte for byte as the legacy adapter writes them ----
+    // ---- JSON columns: the same bytes the catalog and booking slices read ----
 
     /** The SPEC 3 layout shape that {@link #layout} reads back. */
     static String layoutJson(SeatLayout layout) {

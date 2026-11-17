@@ -54,14 +54,15 @@ The image builds the UI in a `node:20-alpine` stage, runs as a non-root user, ke
 
 ```
 src/main/java/dev/thiru/bms/
-  domain/            entities, rules, ports (JDK only)
-  application/       use cases
-  adapters/db/       SQLite repositories, refresh-token and idempotency stores on jolt-db
+  kernel/            pure shared rules and value objects (JDK only)
+  ports/             the real I/O seams: Db, PaymentGateway, SeatEvents, LiveSeats, ...
+  features/          one vertical slice each: catalog, live, accounts, booking, payments, admin
+  adapters/db/       SQLite on jolt-db: ports.Db, refresh-token and idempotency stores, migrations
   adapters/auth/     PBKDF2 password hashing on jolt-auth
   adapters/ids/      random UUIDv4 ids
   adapters/payment/  mock gateway and its webhook signer (Jolt verifies)
   adapters/live/     seat event fan-out for SSE on Jolt's Hub
-  web/               route modules, HTTP records, error mappers
+  web/               shared HTTP kit: pipeline, RBAC gate, problems, paging, the route table
   AppConfig.java     environment settings (SPEC section 9)
   Main.java          composition root
 src/main/resources/
@@ -74,7 +75,7 @@ web/
   public/            favicon and /css/app.css for the server-rendered views
 ```
 
-`ArchitectureTest` enforces the layer rules. Rules for contributors and agents are in [AGENTS.md](AGENTS.md).
+`TargetArchitectureTest` enforces the layering (SPEC section 10). Rules for contributors and agents are in [AGENTS.md](AGENTS.md).
 
 ## Security and RBAC
 

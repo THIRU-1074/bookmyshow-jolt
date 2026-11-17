@@ -37,8 +37,7 @@ Further decisions:
 - **`ports.Db`** replaces `UnitOfWork` + `Repositories`: `inTransaction(Function<Tx, T>)` where `Tx` has `query`, `queryOne`, `update` with JDK row mappers and `afterCommit(Runnable)`. `afterCommit` replaces `EventBuffer`: seat events are queued on the transaction and published by the adapter after commit.
 - **`java.time.Clock` is the clock port.** No wrapper.
 - **Slice tests run on SQLite** (temp file, migrated, as `DbTest` does: about 50 ms per test). `FakeWorld` shrinks as repositories go and is deleted with the last one. Fakes stay for the non-database ports (gateway, seat events, live, hasher, ids, tokens, idempotency) and each fake is held to its port contract.
-- **Wire types come from `api/openapi.yaml`.** A slice that moves switches its responses to `api.generated` records (or keeps local records that `RecordGeneratorTest` checks). Until wave 6 moves generation to `generate-sources`, `api.generated` is not on the main class path, so wave 2 to 5 slices keep local records and the integration lane points `WEB_RECORDS` at them. Shared shapes such as `SeatMap` (catalog and live) are shared through `api.generated`, never through another slice.
-- **Hand-written records stay until their slice moves.** `RecordGeneratorTest.WEB_RECORDS` maps each schema to the record serialised today; a moving slice updates its entries.
+- **Wire types come from `api/openapi.yaml`.** Since wave 6 the build generates one record per object schema into `target/generated-sources/openapi` (package `dev.thiru.bms.api.generated`, a main source root), and the slices serialise those records. Shared shapes such as `SeatMap` (catalog and live) are shared through `api.generated`, never through another slice. During waves 2 to 5 slices kept local records and `RecordGeneratorTest.WEB_RECORDS` mapped each schema to the record serialised; wave 6 removed that map. Today `RecordGeneratorTest` checks that the generated records match the schema, that every object schema is generated or listed with what serves it instead, and that no slice declares a duplicate (`ALLOWED_DUPLICATES`, each with a reason).
 
 ## Guardrails (replace line-by-line review)
 
@@ -200,7 +199,7 @@ Slice lanes never edit these. They hand the integration lane a short note ("regi
 - `web.Permissions`, `web.Rbac` and `docs/RBAC.md`
 - `src/main/resources/db/migrations/*` (one numbering sequence)
 - `pom.xml`, `api/openapi.yaml`, `docs/SPEC.md`
-- `TargetArchitectureTest`, `RecordGeneratorTest.WEB_RECORDS`
+- `TargetArchitectureTest`, `RecordGeneratorTest.ALLOWED_DUPLICATES`
 
 ## Waves
 

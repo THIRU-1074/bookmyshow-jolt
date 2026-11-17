@@ -17,9 +17,9 @@ import java.time.Clock;
 import java.time.Duration;
 
 /**
- * The shared HTTP pipeline every route runs behind, with no route of its own. Legacy modules
- * ({@link WebModules#routes}) and feature slices register into the same pipeline, so swapping a
- * legacy module for its slice is one line and changes nothing around it.
+ * The shared HTTP pipeline every route runs behind, with no route of its own. Every feature slice
+ * registers into it ({@link WebModules#routes}), so a slice gets the same middleware, RBAC gate and
+ * problem mapping without knowing about them.
  *
  * <p>Middleware order is SPEC 9: request id, request log, security headers, problem mapping, gzip,
  * IP rate limits, CSRF on cookie routes, then the RBAC gate (JWT and role checks, see {@link
@@ -125,7 +125,7 @@ public final class HttpPipeline {
         return new HttpPipeline(app, jwt, catalogCache, idempotent, holdLimit);
     }
 
-    /** Mounts a route module (a legacy one or a slice's) behind this pipeline. */
+    /** Mounts a slice's route module behind this pipeline. */
     public HttpPipeline module(RouteModule module) {
         app.module(module);
         return this;
