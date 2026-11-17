@@ -137,7 +137,7 @@ public final class Main {
 
             LiveSeatHub live = new LiveSeatHub(config.sseMaxStreams(), SSE_QUEUE);
             SqlRefreshTokens refreshTokens = new SqlRefreshTokens(db);
-            SqlIdempotency idempotency = new SqlIdempotency(db);
+            SqlIdempotency idempotency = new SqlIdempotency(db, clock);
 
             WebhookSigner signer = new WebhookSigner(config.webhookSecret());
             URI webhook = URI.create(config.publicBaseUrl() + "/api/payments/webhook");

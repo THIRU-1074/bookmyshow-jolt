@@ -3,13 +3,13 @@ package dev.thiru.bms.web;
 import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.domain.BookingPolicy;
 import dev.thiru.bms.domain.port.IdGenerator;
-import dev.thiru.bms.domain.port.IdempotencyStore;
 import dev.thiru.bms.domain.port.LiveSeats;
 import dev.thiru.bms.domain.port.PasswordHasher;
 import dev.thiru.bms.domain.port.PaymentGateway;
 import dev.thiru.bms.domain.port.RefreshTokenStore;
 import dev.thiru.bms.domain.port.SeatEventPublisher;
 import dev.thiru.bms.domain.port.UnitOfWork;
+import in.jolt.IdempotencyStore;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -23,7 +23,7 @@ import java.util.function.BooleanSupplier;
  * @param ids random ids and the booking-code random source
  * @param hasher password hashing (Jolt's PBKDF2 in production)
  * @param refreshTokens durable refresh-token hashes
- * @param idempotency durable Idempotency-Key responses
+ * @param idempotency durable Idempotency-Key responses behind Jolt's Idempotency middleware
  * @param gateway outbound payments (checkout sessions and refunds)
  * @param publisher post-commit seat events
  * @param mockSender delivers the mock gateway's signed webhook over HTTP

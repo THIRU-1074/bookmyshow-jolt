@@ -4,17 +4,16 @@ import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.fakes.FakeWorld;
 import dev.thiru.bms.domain.Role;
 import dev.thiru.bms.domain.User;
-import dev.thiru.bms.domain.port.IdempotencyStore;
 import dev.thiru.bms.domain.port.LiveSeats;
 import dev.thiru.bms.domain.port.PasswordHasher;
 import dev.thiru.bms.domain.port.RefreshTokenStore;
 import in.jolt.App;
+import in.jolt.IdempotencyStore;
 import in.jolt.Jolt;
 import in.jolt.JoltConfig;
 import in.jolt.test.JoltTest;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +36,7 @@ final class WebKit {
 
     final FakeWorld world = FakeWorld.seeded();
     final MemoryRefreshTokens refreshTokens = new MemoryRefreshTokens();
-    final MemoryIdempotency idempotency = new MemoryIdempotency();
+    final IdempotencyStore idempotency = IdempotencyStore.inMemory();
     final FakeLive live = new FakeLive(5);
     final List<ProcessPaymentWebhook.Event> sentWebhooks = new CopyOnWriteArrayList<>();
     final AtomicBoolean dbUp = new AtomicBoolean(true);
@@ -287,39 +286,6 @@ final class WebKit {
                     .forEach(e -> families.add(e.family()));
             families.forEach(this::revokeFamily);
             return families;
-        }
-    }
-
-    static final class MemoryIdempotency implements IdempotencyStore {
-        private record Row(String fingerprint, Stored stored) {}
-
-        private final Map<String, Row> rows = new ConcurrentHashMap<>();
-
-        @Override
-        public synchronized Claim begin(long userId, String key, String fingerprint, Instant now) {
-            String k = userId + "/" + key;
-            Row row = rows.get(k);
-            if (row == null) {
-                rows.put(k, new Row(fingerprint, null));
-                return new Claim(Kind.FRESH, null);
-            }
-            if (!row.fingerprint().equals(fingerprint)) {
-                return new Claim(Kind.MISMATCH, null);
-            }
-            return row.stored() == null
-                    ? new Claim(Kind.IN_FLIGHT, null)
-                    : new Claim(Kind.REPLAY, row.stored());
-        }
-
-        @Override
-        public synchronized void complete(long userId, String key, Stored response) {
-            String k = userId + "/" + key;
-            rows.put(k, new Row(rows.get(k).fingerprint(), response));
-        }
-
-        @Override
-        public synchronized void release(long userId, String key) {
-            rows.remove(userId + "/" + key);
         }
     }
 

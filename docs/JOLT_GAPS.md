@@ -8,7 +8,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 |---|---|---|---|
 | Repeated query params (`req.queryAll`) | [#52](https://github.com/THIRU-1074/custom-Http-Server/issues/52) | none: `web.Query.list` reads `queryAll` and still splits comma lists | done (v0.4.1) |
 | App lifecycle hooks (`onStart`, `onStop`) | [#53](https://github.com/THIRU-1074/custom-Http-Server/issues/53) | `Main` registers `app.onStop(db::close)`; `Booted.close` still ends SSE streams before `Server.close()`, because stop hooks run only after the 5 s drain (new gap B) | done (v0.4.1) |
-| Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `web.IdempotencyFilter` over the `IdempotencyStore` port | closed upstream, awaiting release v0.4.0 (bump jolt.version, remove workaround) |
+| Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `Idempotency.keys().store(...).required()` in `web.Idempotent`. Kept: `adapters.db.SqlIdempotency` implements Jolt's `IdempotencyStore` SPI so keys survive restarts (table rekeyed by Jolt's scope in V5), and `web.Idempotent` re-throws Jolt's plain-text refusals as problem+json `IDEMPOTENCY` and restores the request id on a replay (new gap E) | done (v0.4.1) |
 | Schema migrations | [#55](https://github.com/THIRU-1074/custom-Http-Server/issues/55) | `adapters.db.SchemaRunner` | in progress |
 | IMMEDIATE tx, generated keys, batch, optimistic update | [#56](https://github.com/THIRU-1074/custom-Http-Server/issues/56) | `adapters.db` (JDBC URL `transaction_mode=IMMEDIATE`, row-count checks) | in progress |
 | Pagination helper | [#57](https://github.com/THIRU-1074/custom-Http-Server/issues/57) | `web.Paging`: Jolt `Page` and `Page.Result` build the envelope; the app still checks `page` and `size` itself because `Page.of` answers 400 without naming the field and silently caps `size`, where SPEC 7 wants 422 `errors.page`/`errors.size` | done (v0.4.1), parameter check kept |
@@ -32,7 +32,6 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 
 | Jolt issue | File holding the workaround |
 |---|---|
-| #54 | `src/main/java/dev/thiru/bms/web/IdempotencyFilter.java`, `adapters/db/SqlIdempotency.java`, `src/main/resources/db/migrations/V3__idempotency.sql` |
 | #55 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
 | #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
 | #68 | `src/main/java/dev/thiru/bms/Main.java`, `Dockerfile` |
@@ -45,3 +44,4 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | B | No hook runs before `Server.close()` drains, and stop hooks run after it. Long-lived SSE streams hold the drain for its full 5 s grace period unless the app ends them first. | Slower shutdown. | `Main.Booted.close` closes every live stream, then calls `Server.close()`; the JVM shutdown hook calls `Booted.close` instead of `closeOnShutdown()`. |
 | C | `Hub` cannot end the subscribers of a topic or of the whole hub, `publish` does not return the id it assigned, and with `replay > 0` a topic is never removed, so its replay buffer outlives the show. `hub.sse` also cannot send a first event (the snapshot) before the stream, nor named events. | The app subscribes with `hub.subscribe` and writes SSE itself, tracks its own streams for shutdown, and runs with replay 0. | `adapters.live.LiveSeatHub` |
 | D | Registered health checks cannot be run from app code, and `/_jolt/health` only exists when metrics are exposed. An app that must keep its own health URL and shape cannot reuse the checks. | `/api/health` calls the same `dbUp` supplier as the `db` check, so the two cannot drift. | `web.WebModules` |
+| E | `Idempotency` writes its 400, 409, 422 and 503 refusals directly as `text/plain`, bypassing problem+json and `onError` (listed as a follow-up in the 0.4.1 notes). Its replay also restores the first request's `X-Request-Id`, because `RequestId` sets the header before the handler and the snapshot keeps it. | SPEC 7 wants problem+json with `code: IDEMPOTENCY`, and SPEC 9 wants each response to echo its own request id. | `web.Idempotent` re-throws refusals as `ApiException` and re-sets `X-Request-Id` on a replay; `adapters.db.SqlIdempotency` does not store `X-Request-Id`. |

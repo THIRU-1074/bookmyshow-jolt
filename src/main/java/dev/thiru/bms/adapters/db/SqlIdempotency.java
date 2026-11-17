@@ -1,35 +1,47 @@
 package dev.thiru.bms.adapters.db;
 
-import dev.thiru.bms.domain.port.IdempotencyStore;
+import in.jolt.IdempotencyStore;
 import in.jolt.db.Db;
+import in.jolt.db.TxMode;
+import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
- * Idempotency-Key responses in table {@code idempotency_key} (migration V3). {@link #begin} runs in
- * one IMMEDIATE transaction, so two concurrent requests with the same key cannot both see it as
- * fresh.
- *
- * <p>TODO(jolt#54): delete when Jolt ships {@code Idempotency.keys()}.
+ * Jolt's {@link IdempotencyStore} SPI on table {@code idempotency_key} (migration V5), so stored
+ * responses survive a restart. {@link #begin} runs in one IMMEDIATE transaction, so two concurrent
+ * requests with the same key cannot both start. Rows older than 24 hours are purged by the sweep.
  */
 public final class SqlIdempotency implements IdempotencyStore {
 
-    private record Row(String fingerprint, Integer status, String contentType, byte[] body) {}
+    /**
+     * Not replayed: a replay must echo its own request id, not the first request's. RequestId sets
+     * it before the handler runs, so Jolt's snapshot of the response would otherwise keep it.
+     */
+    private static final String REQUEST_ID = "X-Request-Id";
+
+    private record Row(String fingerprint, Integer status, String headers, byte[] body) {}
 
     private final Db db;
+    private final Clock clock;
 
-    public SqlIdempotency(Db db) {
+    public SqlIdempotency(Db db, Clock clock) {
         this.db = db;
+        this.clock = clock;
     }
 
     @Override
-    public Claim begin(long userId, String key, String fingerprint, Instant now) {
+    public Claim begin(Key key, String fingerprint) {
         return db.inTransaction(
+                TxMode.IMMEDIATE,
                 tx -> {
                     Optional<Row> row =
                             tx.queryOne(
-                                    "SELECT fingerprint, status, content_type, body"
-                                            + " FROM idempotency_key WHERE user_id = ? AND key = ?",
+                                    "SELECT fingerprint, status, headers, body"
+                                            + " FROM idempotency_key WHERE scope = ? AND key = ?",
                                     rs -> {
                                         // NULL status marks a running request; getObject keeps NULL
                                         // apart from a stored status.
@@ -39,56 +51,74 @@ public final class SqlIdempotency implements IdempotencyStore {
                                                 status == null
                                                         ? null
                                                         : ((Number) status).intValue(),
-                                                rs.getString("content_type"),
+                                                rs.getString("headers"),
                                                 rs.getBytes("body"));
                                     },
-                                    userId,
-                                    key);
+                                    key.scope(),
+                                    key.id());
                     if (row.isEmpty()) {
                         tx.update(
-                                "INSERT INTO idempotency_key (user_id, key, fingerprint,"
-                                        + " created_at) VALUES (?, ?, ?, ?)",
-                                userId,
-                                key,
+                                "INSERT INTO idempotency_key (scope, key, fingerprint, created_at)"
+                                        + " VALUES (?, ?, ?, ?)",
+                                key.scope(),
+                                key.id(),
                                 fingerprint,
-                                Sqls.ms(now));
-                        return new Claim(Kind.FRESH, null);
+                                Sqls.ms(clock.instant()));
+                        return Claim.started();
                     }
                     Row r = row.get();
                     if (!r.fingerprint().equals(fingerprint)) {
-                        return new Claim(Kind.MISMATCH, null);
+                        return Claim.mismatch();
                     }
                     if (r.status() == null) {
-                        return new Claim(Kind.IN_FLIGHT, null);
+                        return Claim.inFlight();
                     }
                     byte[] body = r.body() == null ? new byte[0] : r.body();
-                    return new Claim(Kind.REPLAY, new Stored(r.status(), r.contentType(), body));
+                    return Claim.completed(new Stored(r.status(), headers(r.headers()), body));
                 });
     }
 
     @Override
-    public void complete(long userId, String key, Stored response) {
+    public void complete(Key key, Stored response) {
+        List<Object> pairs = new ArrayList<>();
+        for (Map.Entry<String, String> h : response.headers()) {
+            if (!h.getKey().equalsIgnoreCase(REQUEST_ID)) {
+                pairs.add(List.of(h.getKey(), h.getValue()));
+            }
+        }
         db.update(
-                "UPDATE idempotency_key SET status = ?, content_type = ?, body = ?"
-                        + " WHERE user_id = ? AND key = ?",
+                "UPDATE idempotency_key SET status = ?, headers = ?, body = ?"
+                        + " WHERE scope = ? AND key = ?",
                 response.status(),
-                response.contentType(),
+                Json.write(pairs),
                 response.body() == null ? new byte[0] : response.body(),
-                userId,
-                key);
+                key.scope(),
+                key.id());
     }
 
     @Override
-    public void release(long userId, String key) {
-        // Only an unfinished claim: a stored success must keep replaying.
+    public void release(Key key) {
+        // Only an unfinished claim: a stored response must keep replaying.
         db.update(
-                "DELETE FROM idempotency_key WHERE user_id = ? AND key = ? AND status IS NULL",
-                userId,
-                key);
+                "DELETE FROM idempotency_key WHERE scope = ? AND key = ? AND status IS NULL",
+                key.scope(),
+                key.id());
     }
 
-    /** Forgets keys first seen before {@code cutoff}; the sweeper calls this. */
+    /** Forgets keys first seen before {@code cutoff}; the sweep calls this. */
     public int purgeBefore(Instant cutoff) {
         return db.update("DELETE FROM idempotency_key WHERE created_at < ?", Sqls.ms(cutoff));
+    }
+
+    private static List<Map.Entry<String, String>> headers(String json) {
+        List<Map.Entry<String, String>> out = new ArrayList<>();
+        if (json == null) {
+            return out;
+        }
+        for (Object pair : Json.array(Json.parse(json))) {
+            List<Object> p = Json.array(pair);
+            out.add(Map.entry(String.valueOf(p.get(0)), String.valueOf(p.get(1))));
+        }
+        return List.copyOf(out);
     }
 }

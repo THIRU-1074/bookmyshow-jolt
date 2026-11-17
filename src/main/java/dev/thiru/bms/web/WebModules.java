@@ -89,7 +89,7 @@ public final class WebModules {
         app.use("/api/admin", rbac.adminLayer());
         app.use("/api/owner", rbac.ownerLayer());
 
-        Middleware idempotent = new IdempotencyFilter(deps.idempotency(), deps.clock()).required();
+        Middleware idempotent = Idempotent.required(deps.idempotency());
         // Runs after the gate, so "user" is the verified subject.
         Middleware holdLimit = RateLimit.perKey(20, minute, req -> "user:" + req.attr("user"));
 

@@ -70,6 +70,16 @@ class BookingApiTest {
                         .expect(201)
                         .header("Idempotency-Replayed", "true");
         assertArrayEquals(first.bytes(), replay.bytes());
+        // A replay keeps its own request id, not the first request's.
+        kit.http
+                .post("/api/holds")
+                .header("Authorization", auth())
+                .header("Idempotency-Key", "same")
+                .header("X-Request-Id", "second-try")
+                .json(Map.of("showId", 9, "seats", List.of("A2")))
+                .expect(201)
+                .header("Idempotency-Replayed", "true")
+                .header("X-Request-Id", "second-try");
         assertTrue(replay.header("Content-Type").startsWith("application/json"));
         assertEquals(1, kit.world.allHolds().size());
 
@@ -78,8 +88,10 @@ class BookingApiTest {
                 .header("Authorization", auth())
                 .header("Idempotency-Key", "same")
                 .json(Map.of("showId", 9, "seats", List.of("A3")))
+                .header("X-Request-Id", "mismatch")
                 .expect(422)
-                .jsonEquals("code", "IDEMPOTENCY");
+                .jsonEquals("code", "IDEMPOTENCY")
+                .jsonEquals("requestId", "mismatch");
     }
 
     @Test
