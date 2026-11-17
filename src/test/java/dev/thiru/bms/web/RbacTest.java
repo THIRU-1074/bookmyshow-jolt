@@ -3,7 +3,7 @@ package dev.thiru.bms.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.thiru.bms.application.fakes.FakeWorld;
+import dev.thiru.bms.testing.SliceKit;
 import in.jolt.auth.JwtAuth;
 import in.jolt.test.JoltTest;
 import java.time.Duration;
@@ -16,7 +16,55 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 /** Server-side role and ownership enforcement on every protected route. */
 class RbacTest {
 
-    @RegisterExtension final WebKit kit = new WebKit();
+    @RegisterExtension final SliceKit kit = WebApp.boot();
+
+    /** A show in cinema 2, a day after the seed date. */
+    private final long show = WebApp.show(kit);
+
+    /** Signs in over the API, so the token carries the roles stored now. */
+    private String login(String email) {
+        return (String)
+                kit.http()
+                        .post("/api/auth/login")
+                        .remoteAddress(kit.nextAddress())
+                        .json(Map.of("email", email, "password", SliceKit.PASSWORD))
+                        .expect(200)
+                        .jsonField("accessToken");
+    }
+
+    /** Holds seats on {@link #show} and returns the hold id. */
+    private String hold(String token, String... seats) {
+        return (String)
+                kit.http()
+                        .post("/api/holds")
+                        .header("Authorization", SliceKit.bearer(token))
+                        .header("Idempotency-Key", kit.key())
+                        .json(Map.of("showId", show, "seats", List.of(seats)))
+                        .expect(201)
+                        .jsonField("id");
+    }
+
+    private String book(String token, String holdId) {
+        return (String)
+                kit.http()
+                        .post("/api/bookings")
+                        .header("Authorization", SliceKit.bearer(token))
+                        .header("Idempotency-Key", kit.key())
+                        .json(Map.of("holdId", holdId))
+                        .expect(201)
+                        .jsonField("id");
+    }
+
+    /** The owner report total for {@code token}. */
+    private long reportTotal(String token) {
+        return ((Number)
+                        kit.http()
+                                .get("/api/owner/reports/shows")
+                                .header("Authorization", SliceKit.bearer(token))
+                                .expect(200)
+                                .jsonField("total"))
+                .longValue();
+    }
 
     private static String concrete(String pattern) {
         return pattern.replaceAll(":\\w+", "1");
@@ -24,11 +72,11 @@ class RbacTest {
 
     private JoltTest.Result call(Permissions.Rule rule, String token) {
         JoltTest.Call c =
-                kit.http
+                kit.http()
                         .call(rule.method(), concrete(rule.pattern()))
                         .header("Idempotency-Key", kit.key());
         if (token != null) {
-            c.header("Authorization", WebKit.bearer(token));
+            c.header("Authorization", SliceKit.bearer(token));
         }
         if (!rule.method().equals("GET") && !rule.method().equals("DELETE")) {
             c.json(Map.of());
@@ -64,7 +112,7 @@ class RbacTest {
 
     @Test
     void anAudienceMemberGets403OnEveryOwnerAndAdminRoute() {
-        String audience = kit.user("ada@example.com");
+        String audience = kit.audience("ada@example.com");
         assertEquals(
                 22 + 7,
                 refuses(
@@ -74,13 +122,13 @@ class RbacTest {
 
     @Test
     void aTheatreOwnerGets403OnEveryAdminRoute() {
-        String owner = kit.owner("owner@example.com", 2);
+        String owner = kit.owner("owner@example.com", WebApp.CINEMA_ID);
         assertEquals(22, refuses(owner, Set.of(Permissions.Access.ADMIN)));
     }
 
     @Test
     void aTheatreOwnerPassesTheRoleCheckOnEveryOwnerRoute() {
-        String owner = kit.owner("owner@example.com", 2);
+        String owner = kit.owner("owner@example.com", WebApp.CINEMA_ID);
         for (Permissions.Rule rule : Permissions.TABLE) {
             if (rule.access() == Permissions.Access.THEATRE_OWNER) {
                 int status = call(rule, owner).status();
@@ -105,8 +153,8 @@ class RbacTest {
     @Test
     void adminAndOwnerRoutesAreAlsoGuardedByPrefixRoleChecks() {
         // Defence in depth: even a rule mistakenly marked SIGNED_IN under either prefix is refused.
-        String audience = kit.user("ada@example.com");
-        String owner = kit.owner("owner@example.com", 2);
+        String audience = kit.audience("ada@example.com");
+        String owner = kit.owner("owner@example.com", WebApp.CINEMA_ID);
         assertTrue(
                 Permissions.TABLE.stream()
                         .filter(r -> r.pattern().startsWith("/api/admin/"))
@@ -115,14 +163,17 @@ class RbacTest {
                 Permissions.TABLE.stream()
                         .filter(r -> r.pattern().startsWith("/api/owner/"))
                         .allMatch(r -> r.access() == Permissions.Access.THEATRE_OWNER));
-        kit.http
+        kit.http()
                 .get("/api/admin/stats")
-                .header("Authorization", WebKit.bearer(audience))
+                .header("Authorization", SliceKit.bearer(audience))
                 .expect(403);
-        kit.http.get("/api/admin/stats").header("Authorization", WebKit.bearer(owner)).expect(403);
-        kit.http
+        kit.http()
+                .get("/api/admin/stats")
+                .header("Authorization", SliceKit.bearer(owner))
+                .expect(403);
+        kit.http()
                 .get("/api/owner/cinemas")
-                .header("Authorization", WebKit.bearer(audience))
+                .header("Authorization", SliceKit.bearer(audience))
                 .expect(403);
     }
 
@@ -131,9 +182,9 @@ class RbacTest {
         String admin = kit.admin();
         Number otherCinema =
                 (Number)
-                        kit.http
+                        kit.http()
                                 .post("/api/admin/cinemas")
-                                .header("Authorization", WebKit.bearer(admin))
+                                .header("Authorization", SliceKit.bearer(admin))
                                 .header("Idempotency-Key", kit.key())
                                 .json(
                                         Map.of(
@@ -142,185 +193,189 @@ class RbacTest {
                                                 "address", "Road"))
                                 .expect(201)
                                 .jsonField("id");
-        String mine = kit.owner("mine@example.com", 2);
+        String mine = kit.owner("mine@example.com", WebApp.CINEMA_ID);
         String theirs = kit.owner("theirs@example.com", otherCinema.longValue());
-        String bearer = WebKit.bearer(theirs);
-        long show = FakeWorld.SHOW_ID;
+        String bearer = SliceKit.bearer(theirs);
+        long mineTotal = reportTotal(mine);
+        assertTrue(mineTotal > 0);
 
         JoltTest.Result cinemas =
-                kit.http.get("/api/owner/cinemas").header("Authorization", bearer).expect(200);
+                kit.http().get("/api/owner/cinemas").header("Authorization", bearer).expect(200);
         assertEquals(otherCinema.longValue(), ((Number) cinemas.jsonField("0.id")).longValue());
         assertEquals(1, cinemas.json(List.class).size());
-        kit.http
-                .post("/api/owner/cinemas/2/screens")
+        kit.http()
+                .post("/api/owner/cinemas/" + WebApp.CINEMA_ID + "/screens")
                 .header("Authorization", bearer)
                 .header("Idempotency-Key", kit.key())
                 .json(Map.of("name", "Sneaky", "layout", layout(10)))
                 .expect(404)
                 .jsonEquals("code", "NOT_FOUND");
-        kit.http
-                .put("/api/owner/screens/" + FakeWorld.SCREEN_ID)
+        kit.http()
+                .put("/api/owner/screens/" + WebApp.SCREEN_ID)
                 .header("Authorization", bearer)
                 .json(Map.of("name", "Sneaky", "layout", layout(10)))
                 .expect(404);
-        kit.http
+        kit.http()
                 .post("/api/owner/shows")
                 .header("Authorization", bearer)
                 .header("Idempotency-Key", kit.key())
-                .json(show(FakeWorld.SCREEN_ID, FakeWorld.T0.plusSeconds(86_400 * 6)))
+                .json(
+                        show(
+                                WebApp.SCREEN_ID,
+                                kit.seedDate()
+                                        .plusDays(20)
+                                        .atTime(9, 0)
+                                        .atZone(SliceKit.IST)
+                                        .toInstant()))
                 .expect(404);
-        kit.http
+        kit.http()
                 .post("/api/owner/shows/" + show + "/cancel")
                 .header("Authorization", bearer)
                 .header("Idempotency-Key", kit.key())
                 .expect(404);
-        kit.http
+        kit.http()
                 .get("/api/owner/reports/shows/" + show)
                 .header("Authorization", bearer)
                 .expect(404)
                 .jsonEquals("code", "NOT_FOUND");
-        kit.http
+        kit.http()
                 .get("/api/owner/reports/shows")
                 .header("Authorization", bearer)
                 .expect(200)
                 .jsonEquals("total", 0);
 
         // Nothing changed, and the real owner still sees it all.
-        kit.http
+        kit.http()
                 .get("/api/owner/reports/shows/" + show)
-                .header("Authorization", WebKit.bearer(mine))
+                .header("Authorization", SliceKit.bearer(mine))
                 .expect(200)
                 .jsonEquals("status", "SCHEDULED");
-        kit.http
-                .get("/api/owner/reports/shows")
-                .header("Authorization", WebKit.bearer(mine))
-                .expect(200)
-                .jsonEquals("total", 1);
+        assertEquals(mineTotal, reportTotal(mine));
     }
 
     @Test
     void anAdminCannotRemoveTheirOwnAdminRole() {
         String admin = kit.admin();
-        long adminId = kit.idOf("admin@bms.test");
-        kit.http
+        long adminId = kit.idOf(SliceKit.ADMIN_EMAIL);
+        kit.http()
                 .delete("/api/admin/users/" + adminId + "/roles/ADMIN")
-                .header("Authorization", WebKit.bearer(admin))
+                .header("Authorization", SliceKit.bearer(admin))
                 .expect(409)
                 .jsonEquals("code", "CONFLICT");
-        kit.http
+        kit.http()
                 .get("/api/admin/stats")
-                .header("Authorization", WebKit.bearer(kit.login("admin@bms.test")))
+                .header("Authorization", SliceKit.bearer(login(SliceKit.ADMIN_EMAIL)))
                 .expect(200);
     }
 
     @Test
     void unknownApiRoutesAreDeniedByDefault() {
         String admin = kit.admin();
-        kit.http
+        kit.http()
                 .get("/api/admin/secret")
-                .header("Authorization", WebKit.bearer(admin))
+                .header("Authorization", SliceKit.bearer(admin))
                 .expect(404)
                 .jsonEquals("code", "NOT_FOUND");
-        kit.http.put("/api/bookings").expect(404);
+        kit.http().put("/api/bookings").expect(404);
     }
 
     @Test
     void aStrangerCannotSeeOrTouchAnotherUsersHoldsAndBookings() {
-        String ada = kit.user("ada@example.com");
-        String eve = kit.user("eve@example.com");
-        String booking = kit.book(ada, kit.hold(ada, "A5"));
-        String holdOnly = kit.hold(ada, "B2");
+        String ada = kit.audience("ada@example.com");
+        String eve = kit.audience("eve@example.com");
+        String booking = book(ada, hold(ada, "A5"));
+        String holdOnly = hold(ada, "B2");
 
-        kit.http
+        kit.http()
                 .delete("/api/holds/" + holdOnly)
-                .header("Authorization", WebKit.bearer(eve))
+                .header("Authorization", SliceKit.bearer(eve))
                 .expect(404);
-        kit.http
+        kit.http()
                 .get("/api/bookings/" + booking)
-                .header("Authorization", WebKit.bearer(eve))
+                .header("Authorization", SliceKit.bearer(eve))
                 .expect(404)
                 .jsonEquals("code", "NOT_FOUND");
-        kit.http
+        kit.http()
                 .post("/api/bookings/" + booking + "/checkout")
-                .header("Authorization", WebKit.bearer(eve))
+                .header("Authorization", SliceKit.bearer(eve))
                 .header("Idempotency-Key", kit.key())
                 .expect(404);
-        kit.http
+        kit.http()
                 .post("/api/bookings/" + booking + "/cancel")
-                .header("Authorization", WebKit.bearer(eve))
+                .header("Authorization", SliceKit.bearer(eve))
                 .header("Idempotency-Key", kit.key())
                 .expect(404);
-        kit.http
+        kit.http()
                 .get("/api/bookings/" + booking + "/ticket")
-                .header("Authorization", WebKit.bearer(eve))
+                .header("Authorization", SliceKit.bearer(eve))
                 .expect(404);
-        kit.http
+        kit.http()
                 .get("/api/bookings")
-                .header("Authorization", WebKit.bearer(eve))
+                .header("Authorization", SliceKit.bearer(eve))
                 .expect(200)
                 .jsonEquals("total", 0);
-        kit.http
+        kit.http()
                 .post("/api/bookings")
-                .header("Authorization", WebKit.bearer(eve))
+                .header("Authorization", SliceKit.bearer(eve))
                 .header("Idempotency-Key", kit.key())
                 .json(Map.of("holdId", holdOnly))
                 .expect(404);
 
         // The owner still can.
-        kit.http
+        kit.http()
                 .get("/api/bookings/" + booking)
-                .header("Authorization", WebKit.bearer(ada))
+                .header("Authorization", SliceKit.bearer(ada))
                 .expect(200)
                 .jsonEquals("id", booking);
-        kit.http
+        kit.http()
                 .delete("/api/holds/" + holdOnly)
-                .header("Authorization", WebKit.bearer(ada))
+                .header("Authorization", SliceKit.bearer(ada))
                 .expect(204);
     }
 
     @Test
     void anAdminMayReadAnyBookingButNotActAsItsOwner() {
-        String ada = kit.user("ada@example.com");
+        String ada = kit.audience("ada@example.com");
         String admin = kit.admin();
-        String booking = kit.book(ada, kit.hold(ada, "A5"));
+        String booking = book(ada, hold(ada, "A5"));
 
-        kit.http
+        kit.http()
                 .get("/api/bookings/" + booking)
-                .header("Authorization", WebKit.bearer(admin))
+                .header("Authorization", SliceKit.bearer(admin))
                 .expect(200)
                 .jsonEquals("id", booking);
-        kit.http
+        kit.http()
                 .post("/api/bookings/" + booking + "/cancel")
-                .header("Authorization", WebKit.bearer(admin))
+                .header("Authorization", SliceKit.bearer(admin))
                 .header("Idempotency-Key", kit.key())
                 .expect(404);
-        kit.http
+        kit.http()
                 .post("/api/bookings/" + booking + "/checkout")
-                .header("Authorization", WebKit.bearer(admin))
+                .header("Authorization", SliceKit.bearer(admin))
                 .header("Idempotency-Key", kit.key())
                 .expect(404);
-        kit.http
+        kit.http()
                 .get("/api/bookings")
-                .header("Authorization", WebKit.bearer(admin))
+                .header("Authorization", SliceKit.bearer(admin))
                 .expect(200)
                 .jsonEquals("total", 0);
     }
 
     @Test
     void idempotencyKeysAreScopedPerUser() {
-        String ada = kit.user("ada@example.com");
-        String eve = kit.user("eve@example.com");
-        Map<String, Object> body = Map.of("showId", 9, "seats", List.of("B5"));
-        kit.http
+        String ada = kit.audience("ada@example.com");
+        String eve = kit.audience("eve@example.com");
+        Map<String, Object> body = Map.of("showId", show, "seats", List.of("B5"));
+        kit.http()
                 .post("/api/holds")
-                .header("Authorization", WebKit.bearer(ada))
+                .header("Authorization", SliceKit.bearer(ada))
                 .header("Idempotency-Key", "shared")
                 .json(body)
                 .expect(201);
         // Same key, same body, other user: a fresh request, never Ada's stored response.
-        kit.http
+        kit.http()
                 .post("/api/holds")
-                .header("Authorization", WebKit.bearer(eve))
+                .header("Authorization", SliceKit.bearer(eve))
                 .header("Idempotency-Key", "shared")
                 .json(body)
                 .expect(409)
@@ -330,14 +385,23 @@ class RbacTest {
     @Test
     void aTokenIssuedBeforeTheRoleRenameStillCountsAsAudience() {
         String legacy =
-                JwtAuth.hs256(WebKit.SECRET)
+                JwtAuth.hs256(SliceKit.SECRET)
                         .sign("1", Map.of("roles", List.of("USER")), Duration.ofMinutes(5));
-        kit.http.get("/api/bookings").header("Authorization", WebKit.bearer(legacy)).expect(200);
-        kit.http.get("/api/admin/stats").header("Authorization", WebKit.bearer(legacy)).expect(403);
+        kit.http()
+                .get("/api/bookings")
+                .header("Authorization", SliceKit.bearer(legacy))
+                .expect(200);
+        kit.http()
+                .get("/api/admin/stats")
+                .header("Authorization", SliceKit.bearer(legacy))
+                .expect(403);
         String unknown =
-                JwtAuth.hs256(WebKit.SECRET)
+                JwtAuth.hs256(SliceKit.SECRET)
                         .sign("1", Map.of("roles", List.of("ROOT")), Duration.ofMinutes(5));
-        kit.http.get("/api/bookings").header("Authorization", WebKit.bearer(unknown)).expect(403);
+        kit.http()
+                .get("/api/bookings")
+                .header("Authorization", SliceKit.bearer(unknown))
+                .expect(403);
     }
 
     /** A one-row layout of {@code seats} CLASSIC seats. */

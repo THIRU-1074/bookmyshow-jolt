@@ -3,6 +3,7 @@ package dev.thiru.bms.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import dev.thiru.bms.testing.SliceKit;
 import in.jolt.App;
 import in.jolt.IdempotencyStore;
 import in.jolt.Jolt;
@@ -17,8 +18,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The pipeline alone, with no legacy route module: a slice's routes mounted on it get the SPEC 9
- * middleware (request id, security headers, problems, RBAC gate and layers) exactly as in
+ * The pipeline alone, with no route module of its own: a slice's routes mounted on it get the SPEC
+ * 9 middleware (request id, security headers, problems, RBAC gate and layers) exactly as in
  * production.
  */
 class HttpPipelineTest {
@@ -28,7 +29,7 @@ class HttpPipelineTest {
             HttpPipeline.install(
                     app,
                     new HttpPipeline.Config(
-                            WebKit.SECRET,
+                            SliceKit.SECRET,
                             Clock.systemUTC(),
                             IdempotencyStore.inMemory(),
                             false,
