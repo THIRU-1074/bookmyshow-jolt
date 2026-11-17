@@ -58,10 +58,14 @@ export async function render({ keepScroll = false } = {}) {
 
   const page = match ? await match.load() : await import('./pages/notfound.js');
   if (token !== renderToken) return;
-  main.replaceChildren();
+  // Each render gets its own container, so a slow render that loses the race writes into a
+  // detached node instead of the page.
+  const view = document.createElement('div');
+  view.className = 'view';
+  main.replaceChildren(view);
   main.removeAttribute('aria-busy');
   const ctx = {
-    main,
+    main: view,
     params,
     query: new URLSearchParams(search),
     isCurrent: () => token === renderToken,
