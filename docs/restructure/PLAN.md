@@ -1,6 +1,6 @@
 # ADR 0001: vertical feature slices around a thin hexagon
 
-- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is done on `feat/restructure-foundation`; no production class has moved yet.
+- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade (`feat/restructure-wave1`); no production class has moved yet.
 - **Date:** 2026-11-17
 - **Supersedes:** the layer-first layering of SPEC section 10 once the last wave lands.
 
@@ -65,13 +65,13 @@ A slice lane is done when all of these are green; review then looks at the slice
 | `FakeWorld.bookings().findOpenExpired` | `ORDER BY expires_at, id` | oldest expiry first |
 | `FakeWorld.locks().findByHold/findByShow/deleteExpiredHeld` | `SqlSeatLocks` sorts by seat | sorted by seat |
 | `FakeWorld.refund` | `MockPaymentGateway` | negative amount is `IllegalArgumentException` |
-| `WebKit.MemoryIdempotency.release` | `SqlIdempotency` | keeps a completed response replaying |
+| `WebKit.MemoryIdempotency.release` | `SqlIdempotency` | keeps a completed response replaying (since v0.4.1 the web tests use Jolt's `IdempotencyStore.inMemory()`, which meets the same contract) |
 
 No contract had to be disabled. The SQLite adapters met every contract as written.
 
 ### Spec drift found while writing the schema (not fixed: spec changes are their own PR)
 
-- SPEC 7 says the seat map's `categories` are `{code, name, amount}`; the server sends `{category, name, amount}` (`Dtos.PriceDto`). The schema follows the server. Decide which is right before the React seat map binds to it.
+- SPEC 7 said the seat map's `categories` are `{code, name, amount}`; the server and the React client use `{category, name, amount}` (`Dtos.PriceDto`). Settled for the server: SPEC 7 fixed in its own `docs(spec)` commit.
 
 ## Class map
 
@@ -115,7 +115,7 @@ Every production class, its target and why. "Split" means the code is divided ac
 | `PasswordHasher` | `ports` | crypto library seam |
 | `IdGenerator` | `ports.Ids` | randomness seam for deterministic tests |
 | `RefreshTokenStore` | `ports` | persistence outside the request transaction |
-| `IdempotencyStore` | `ports` | persistence outside the request transaction |
+| `IdempotencyStore` | gone in v0.4.1 | Jolt's `in.jolt.IdempotencyStore` SPI replaced it; `adapters.db.SqlIdempotency` implements it and `Main` hands it to `web.Idempotent`. Not a port: ports never import Jolt |
 | new: `Db` (+ `Tx`) | `ports` | the transaction seam, with `afterCommit` |
 
 ### `application` to `features`
@@ -129,7 +129,7 @@ Every production class, its target and why. "Split" means the code is divided ac
 | `BookingOps` | split: `ownedBooking` to `features.booking`; `apply`/`expire` copied into each slice that moves bookings (booking, payments, admin) | about 30 lines; slices never import each other, and the rule itself is in `kernel.booking.Booking` |
 | `EventBuffer` | deleted | replaced by `ports.Db.Tx.afterCommit` |
 | `ProcessPaymentWebhook`, `MockGatewayPayments` | `features.payments` | webhook and mock checkout |
-| `WebhookVerifier` | `ports.WebhookVerifier` | signature check behind an adapter while jolt#59 is open |
+| `WebhookVerifier` | gone in v0.4.1 | Jolt's `Webhooks.hmacSha256` middleware verifies signatures in the web pipeline |
 | `MockGatewayPayments.Sender` | `ports.GatewayCallback` | the mock gateway's real HTTP call back to the app |
 | `AdminCatalog` | `features.admin` | catalog writes for admins and owners; mostly transaction scripts |
 | `AdminReports` | `features.admin` | reports and stats |
@@ -150,7 +150,8 @@ Every production class, its target and why. "Split" means the code is divided ac
 | `AdminModule`, `OwnerModule` | `features.admin` | one slice, two route classes (`/api/admin`, `/api/owner`) |
 | `Dtos` | split per slice, then replaced by `api.generated` records (integration lane until split) | the wire types of each slice; shared shapes via `api.generated` |
 | `Money` | `kernel.Money` | paise formatting, pure |
-| `ApiException`, `Problems`, `Guards`, `Principal`, `Query`, `PageRequest`, `PageResult`, `IdempotencyFilter` | stay in `web` (shared HTTP kit) | cross-cutting HTTP plumbing every slice uses; not a feature |
+| `ApiException`, `Problems`, `Principal`, `Query`, `Paging`, `Idempotent` | stay in `web` (shared HTTP kit) | cross-cutting HTTP plumbing every slice uses; not a feature (v0.4.1 replaced `Guards`, `PageRequest`, `PageResult`, `IdempotencyFilter` with these and Jolt) |
+| `CatalogCache` | stays in `web` (integration lane) | the 60 s Jolt `TtlCache` on public catalog GETs; catalog reads and every catalog write (admin) share it, so no single slice owns it |
 | `Permissions`, `Rbac` | stay in `web` (integration lane) | the one RBAC table, tied to RBAC.md by `RbacMatrixTest` |
 | `WebModules` | split: middleware chain stays in `web` as the HTTP pipeline; route installation moves to `Main` | wiring slices together is composition |
 | `WebDeps` | deleted | ceremony: `Main` passes each slice only the ports it uses |
@@ -166,12 +167,12 @@ Every production class, its target and why. "Split" means the code is divided ac
 | `db.Json` | `kernel.Json` | JDK-only codec for JSON columns that several slices read |
 | `db.Sqls` | folded into `ports.Db` row helpers | instant and list conversions every slice's SQL needs |
 | `db.Sqlite`, `db.SchemaRunner` | stay in `adapters.db` | connection setup and migrations |
-| `db.SqlRefreshTokens`, `db.SqlIdempotency` | stay in `adapters.db` | adapters of their ports |
+| `db.SqlRefreshTokens`, `db.SqlIdempotency` | stay in `adapters.db` | adapters of `ports.RefreshTokenStore` and of Jolt's `IdempotencyStore` SPI |
 | `auth.Pbkdf2PasswordHasher` | stays | adapter of `ports.PasswordHasher` |
 | `ids.SecureIds` | stays | adapter of `ports.Ids` |
-| `live.SeatEvents`, `live.LiveSeatHub` | stay | adapter of `ports.SeatEvents` and `ports.LiveSeats` |
+| `live.LiveSeatHub` | stays | one Jolt `Hub` behind both `ports.SeatEvents` and `ports.LiveSeats` (v0.4.1 folded `SeatEvents` into it) |
 | `payment.MockPaymentGateway` | stays | adapter of `ports.PaymentGateway` |
-| `payment.HmacVerifier`, `payment.HmacWebhookVerifier` | stay | adapter of `ports.WebhookVerifier` |
+| `payment.WebhookSigner` | stays | the mock gateway's signer (Jolt verifies, it has no signer) |
 | `payment.MockGatewayClient`, `payment.MockGatewaySender` | stay | adapter of `ports.GatewayCallback` |
 | `package-info` files | stay | |
 
@@ -190,7 +191,7 @@ Every production class, its target and why. "Split" means the code is divided ac
 
 Slice lanes never edit these. They hand the integration lane a short note ("register `CatalogRoutes`, delete `CatalogModule`, `Dtos.CityDto` ...") and the integration lane applies it in one commit per slice:
 
-- `Main`, `AppConfig`, `WebModules`, `WebDeps`
+- `Main`, `AppConfig`, `WebModules`, `WebDeps`, `web.CatalogCache`
 - `web.Permissions`, `web.Rbac` and `docs/RBAC.md`
 - `web.Dtos` (until it is fully split)
 - `domain.port.Repositories`, `UnitOfWork`, `adapters.db.SqlRepositories`, `SqliteUnitOfWork`
