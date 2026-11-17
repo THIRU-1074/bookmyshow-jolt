@@ -1,4 +1,4 @@
-package dev.thiru.bms.web;
+package dev.thiru.bms.testing;
 
 import dev.thiru.bms.contract.RefreshTokenStoreContract;
 import dev.thiru.bms.ports.RefreshTokenStore;
@@ -8,6 +8,6 @@ class MemoryRefreshTokensContractTest extends RefreshTokenStoreContract {
 
     @Override
     protected RefreshTokenStore newStore() {
-        return new WebKit.MemoryRefreshTokens();
+        return new MemoryRefreshTokens();
     }
 }

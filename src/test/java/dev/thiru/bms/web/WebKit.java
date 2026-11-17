@@ -4,9 +4,9 @@ import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.fakes.FakeWorld;
 import dev.thiru.bms.kernel.account.Role;
 import dev.thiru.bms.kernel.account.User;
-import dev.thiru.bms.ports.LiveSeats;
-import dev.thiru.bms.ports.PasswordHasher;
-import dev.thiru.bms.ports.RefreshTokenStore;
+import dev.thiru.bms.testing.FakeLive;
+import dev.thiru.bms.testing.MemoryRefreshTokens;
+import dev.thiru.bms.testing.PlainHasher;
 import in.jolt.App;
 import in.jolt.IdempotencyStore;
 import in.jolt.Jolt;
@@ -14,16 +14,10 @@ import in.jolt.JoltConfig;
 import in.jolt.test.JoltTest;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -227,124 +221,5 @@ final class WebKit {
                 .expect(200)
                 .jsonEquals("status", "CONFIRMED");
         return booking;
-    }
-
-    // ---- fakes ----
-
-    static final class PlainHasher implements PasswordHasher {
-        static final String PREFIX = "plain:";
-
-        @Override
-        public String hash(String raw) {
-            return PREFIX + raw;
-        }
-
-        @Override
-        public boolean verify(String raw, String hash) {
-            return hash.equals(PREFIX + raw);
-        }
-    }
-
-    static final class MemoryRefreshTokens implements RefreshTokenStore {
-        private final Map<String, Entry> entries = new ConcurrentHashMap<>();
-        private final Set<String> revoked = ConcurrentHashMap.newKeySet();
-
-        @Override
-        public void save(Entry entry) {
-            entries.put(entry.hash(), entry);
-        }
-
-        @Override
-        public Optional<Entry> find(String hash) {
-            return Optional.ofNullable(entries.get(hash));
-        }
-
-        @Override
-        public synchronized boolean rotate(String oldHash, Entry next) {
-            Entry old = entries.get(oldHash);
-            if (old == null || old.used() || revoked.contains(old.family())) {
-                return false;
-            }
-            entries.put(
-                    oldHash,
-                    new Entry(old.hash(), old.subject(), old.family(), old.expires(), true));
-            entries.put(next.hash(), next);
-            return true;
-        }
-
-        @Override
-        public void revokeFamily(String family) {
-            revoked.add(family);
-            entries.values().removeIf(e -> e.family().equals(family));
-        }
-
-        @Override
-        public Set<String> revokeSubject(String subject) {
-            Set<String> families = new HashSet<>();
-            entries.values().stream()
-                    .filter(e -> e.subject().equals(subject))
-                    .forEach(e -> families.add(e.family()));
-            families.forEach(this::revokeFamily);
-            return families;
-        }
-    }
-
-    static final class FakeLive implements LiveSeats {
-        final List<Sub> subs = new CopyOnWriteArrayList<>();
-        private final int max;
-
-        FakeLive(int max) {
-            this.max = max;
-        }
-
-        @Override
-        public synchronized Optional<Subscription> subscribe(long showId) {
-            if (openStreams() >= max) {
-                return Optional.empty();
-            }
-            Sub s = new Sub(showId);
-            subs.add(s);
-            return Optional.of(s);
-        }
-
-        @Override
-        public int openStreams() {
-            return (int) subs.stream().filter(Sub::isOpen).count();
-        }
-
-        void push(long showId, String id, String name, String data) {
-            subs.stream()
-                    .filter(s -> s.showId == showId)
-                    .forEach(s -> s.queue.add(new Message(id, name, data)));
-        }
-
-        void endAll() {
-            subs.forEach(Sub::close);
-        }
-
-        static final class Sub implements Subscription {
-            final long showId;
-            final BlockingQueue<Message> queue = new LinkedBlockingQueue<>();
-            private volatile boolean open = true;
-
-            Sub(long showId) {
-                this.showId = showId;
-            }
-
-            @Override
-            public Message poll(Duration timeout) throws InterruptedException {
-                return queue.poll(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            }
-
-            @Override
-            public boolean isOpen() {
-                return open;
-            }
-
-            @Override
-            public void close() {
-                open = false;
-            }
-        }
     }
 }

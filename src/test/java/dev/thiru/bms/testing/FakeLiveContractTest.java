@@ -1,4 +1,4 @@
-package dev.thiru.bms.web;
+package dev.thiru.bms.testing;
 
 import dev.thiru.bms.contract.LiveSeatsContract;
 import dev.thiru.bms.kernel.SeatId;
@@ -7,9 +7,9 @@ import dev.thiru.bms.ports.SeatEvent;
 import java.util.stream.Collectors;
 
 /**
- * The web tests' FakeLive. It has no publisher side, so {@link #emit} renders the SPEC 7 payload
- * here and numbers events as the hub does; what this proves is that the fake's subscribe, cap,
- * routing and close behave like the hub.
+ * The slice and web tests' FakeLive. It has no publisher side, so {@link #emit} renders the SPEC 7
+ * payload here and numbers events as the hub does; what this proves is that the fake's subscribe,
+ * cap, routing and close behave like the hub.
  */
 class FakeLiveContractTest extends LiveSeatsContract {
 
@@ -17,7 +17,7 @@ class FakeLiveContractTest extends LiveSeatsContract {
 
     @Override
     protected LiveSeats newLive() {
-        return new WebKit.FakeLive(CAP);
+        return new FakeLive(CAP);
     }
 
     @Override
@@ -33,7 +33,7 @@ class FakeLiveContractTest extends LiveSeatsContract {
                                 .map(s -> "\"" + s + "\"")
                                 .collect(Collectors.joining(",", "[", "]"));
         String head = "{\"showId\":" + event.showId() + ",\"seats\":" + seats;
-        WebKit.FakeLive fake = (WebKit.FakeLive) live;
+        FakeLive fake = (FakeLive) live;
         String id = Long.toString(++nextId);
         switch (event) {
             case SeatEvent.Held h ->
