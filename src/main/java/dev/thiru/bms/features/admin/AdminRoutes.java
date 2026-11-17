@@ -1,19 +1,13 @@
 package dev.thiru.bms.features.admin;
 
-import dev.thiru.bms.features.admin.AdminDtos.AccountDto;
-import dev.thiru.bms.features.admin.AdminDtos.CinemaDto;
-import dev.thiru.bms.features.admin.AdminDtos.CinemaRequest;
-import dev.thiru.bms.features.admin.AdminDtos.CityDto;
-import dev.thiru.bms.features.admin.AdminDtos.CityRequest;
-import dev.thiru.bms.features.admin.AdminDtos.MovieDetail;
-import dev.thiru.bms.features.admin.AdminDtos.MovieRequest;
-import dev.thiru.bms.features.admin.AdminDtos.RenameRequest;
-import dev.thiru.bms.features.admin.AdminDtos.ScreenDto;
-import dev.thiru.bms.features.admin.AdminDtos.ScreenRequest;
-import dev.thiru.bms.features.admin.AdminDtos.ShowDto;
-import dev.thiru.bms.features.admin.AdminDtos.ShowReportDetailDto;
-import dev.thiru.bms.features.admin.AdminDtos.ShowRequest;
-import dev.thiru.bms.features.admin.AdminDtos.StatsDto;
+import dev.thiru.bms.api.generated.CancelShowResult;
+import dev.thiru.bms.api.generated.CinemaRequest;
+import dev.thiru.bms.api.generated.CityRequest;
+import dev.thiru.bms.api.generated.MovieRequest;
+import dev.thiru.bms.api.generated.RenameRequest;
+import dev.thiru.bms.api.generated.ScreenRequest;
+import dev.thiru.bms.api.generated.ShowRequest;
+import dev.thiru.bms.api.generated.Stats;
 import dev.thiru.bms.kernel.DomainException;
 import dev.thiru.bms.kernel.account.CinemaScope;
 import dev.thiru.bms.kernel.account.Role;
@@ -92,7 +86,7 @@ public final class AdminRoutes implements RouteModule {
                     CityRequest in = body(req, CityRequest.class);
                     created(
                             res,
-                            CityDto.of(
+                            AdminDtos.city(
                                     admin.createCity(City.of(in.id(), in.name(), in.timeZone()))));
                 });
         r.put(
@@ -100,7 +94,7 @@ public final class AdminRoutes implements RouteModule {
                 (req, res) ->
                         ok(
                                 res,
-                                CityDto.of(
+                                AdminDtos.city(
                                         admin.renameCity(
                                                 req.param("id"),
                                                 body(req, RenameRequest.class).name()))));
@@ -112,7 +106,7 @@ public final class AdminRoutes implements RouteModule {
                     CinemaRequest in = body(req, CinemaRequest.class);
                     created(
                             res,
-                            CinemaDto.of(
+                            AdminDtos.cinema(
                                     admin.createCinema(
                                             new Cinema(0, in.cityId(), in.name(), in.address()))));
                 });
@@ -122,7 +116,7 @@ public final class AdminRoutes implements RouteModule {
                     CinemaRequest in = body(req, CinemaRequest.class);
                     ok(
                             res,
-                            CinemaDto.of(
+                            AdminDtos.cinema(
                                     admin.updateCinema(
                                             Query.id(req, "id"), in.name(), in.address())));
                 });
@@ -140,7 +134,7 @@ public final class AdminRoutes implements RouteModule {
                     ScreenRequest in = body(req, ScreenRequest.class);
                     created(
                             res,
-                            ScreenDto.of(
+                            AdminDtos.screen(
                                     admin.createScreen(
                                             all, Query.id(req, "id"), in.name(), layout(in))));
                 });
@@ -150,7 +144,7 @@ public final class AdminRoutes implements RouteModule {
                     ScreenRequest in = body(req, ScreenRequest.class);
                     ok(
                             res,
-                            ScreenDto.of(
+                            AdminDtos.screen(
                                     admin.updateScreen(
                                             all, Query.id(req, "id"), in.name(), layout(in))));
                 });
@@ -167,7 +161,7 @@ public final class AdminRoutes implements RouteModule {
                 (req, res) ->
                         created(
                                 res,
-                                MovieDetail.of(
+                                AdminDtos.movieDetail(
                                         admin.createMovie(
                                                 movie(0, body(req, MovieRequest.class))))));
         r.put(
@@ -176,7 +170,7 @@ public final class AdminRoutes implements RouteModule {
                     long id = Query.id(req, "id");
                     ok(
                             res,
-                            MovieDetail.of(
+                            AdminDtos.movieDetail(
                                     admin.updateMovie(
                                             id, movie(id, body(req, MovieRequest.class)))));
                 });
@@ -194,7 +188,7 @@ public final class AdminRoutes implements RouteModule {
                     ShowRequest in = show(body(req, ShowRequest.class));
                     ok(
                             res,
-                            ShowDto.of(
+                            AdminDtos.show(
                                     admin.updateShow(
                                             Query.id(req, "id"),
                                             in.movieId(),
@@ -213,14 +207,17 @@ public final class AdminRoutes implements RouteModule {
         r.get(
                 p + "/reports/shows/:id",
                 (req, res) ->
-                        ok(res, ShowReportDetailDto.of(reports.show(all, Query.id(req, "id")))));
+                        ok(
+                                res,
+                                AdminDtos.showReportDetail(
+                                        reports.show(all, Query.id(req, "id")))));
         r.get(
                 p + "/stats",
                 (req, res) -> {
                     AdminReports.Stats s = reports.stats();
                     ok(
                             res,
-                            new StatsDto(
+                            new Stats(
                                     s.activeHolds(),
                                     s.bookingsConfirmedToday(),
                                     live.openStreams()));
@@ -234,17 +231,18 @@ public final class AdminRoutes implements RouteModule {
                             res,
                             Paging.result(
                                     users.list(Query.text(req, "q"), page.page(), page.size()),
-                                    AccountDto::of));
+                                    AdminDtos::account));
                 });
         r.put(
                 p + "/users/:id/roles/:role",
-                (req, res) -> ok(res, AccountDto.of(users.grant(Query.id(req, "id"), role(req)))));
+                (req, res) ->
+                        ok(res, AdminDtos.account(users.grant(Query.id(req, "id"), role(req)))));
         r.delete(
                 p + "/users/:id/roles/:role",
                 (req, res) ->
                         ok(
                                 res,
-                                AccountDto.of(
+                                AdminDtos.account(
                                         users.revoke(
                                                 Principal.of(req).userId(),
                                                 Query.id(req, "id"),
@@ -254,14 +252,14 @@ public final class AdminRoutes implements RouteModule {
                 (req, res) ->
                         ok(
                                 res,
-                                AccountDto.of(
+                                AdminDtos.account(
                                         users.link(Query.id(req, "id"), Query.id(req, "userId")))));
         r.delete(
                 p + "/cinemas/:id/owners/:userId",
                 (req, res) ->
                         ok(
                                 res,
-                                AccountDto.of(
+                                AdminDtos.account(
                                         users.unlink(
                                                 Query.id(req, "id"), Query.id(req, "userId")))));
     }
@@ -272,7 +270,7 @@ public final class AdminRoutes implements RouteModule {
         ShowRequest in = show(body(req, ShowRequest.class));
         created(
                 res,
-                ShowDto.of(
+                AdminDtos.show(
                         catalog.createShow(
                                 scope,
                                 in.movieId(),
@@ -286,7 +284,7 @@ public final class AdminRoutes implements RouteModule {
     static void cancelShow(Request req, Response res, CancelShow cancel, CinemaScope scope) {
         long id = Query.id(req, "id");
         CancelShow.Result c = cancel.execute(scope, id);
-        ok(res, new AdminDtos.CancelShowResult(id, c.refunded(), c.cancelled(), c.holdsReleased()));
+        ok(res, new CancelShowResult(id, c.refunded(), c.cancelled(), c.holdsReleased()));
     }
 
     static void reportList(Request req, Response res, AdminReports reports, CinemaScope scope) {
@@ -301,7 +299,7 @@ public final class AdminRoutes implements RouteModule {
                                 instant(req, "to", true),
                                 page.page(),
                                 page.size()),
-                        AdminDtos.ShowReportDto::of));
+                        AdminDtos::showReport));
     }
 
     // ---- request parsing ----
@@ -347,7 +345,7 @@ public final class AdminRoutes implements RouteModule {
         if (in.layout() == null) {
             throw ApiException.validation("layout", "is required");
         }
-        return in.layout().toDomain();
+        return AdminDtos.toDomain(in.layout());
     }
 
     /** Every missing field in one 422; the use case validates values (overlap, prices). */

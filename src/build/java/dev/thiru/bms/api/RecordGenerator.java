@@ -25,8 +25,9 @@ import java.util.TreeSet;
  *   <li>{@code oneOf} schemas are skipped: Java has no tagged union a record could express.
  * </ul>
  *
- * <p>Run with {@code mvn -Papi-codegen -DskipTests process-test-classes}; output goes to {@code
- * target/generated-sources/openapi}. Arguments: schema file, output directory, package.
+ * <p>Lives in the build-time source set ({@code src/build/java}) and runs in every build at {@code
+ * generate-sources}; output goes to {@code target/generated-sources/openapi}, a main source root.
+ * Arguments: schema file, output directory, package.
  */
 public final class RecordGenerator {
 
@@ -46,7 +47,11 @@ public final class RecordGenerator {
         System.out.println("Generated " + files.size() + " records into " + out);
     }
 
-    /** Writes every record under {@code root} in package directories; returns the files. */
+    /**
+     * Writes every record under {@code root} in package directories and returns the files. A file
+     * whose content is unchanged is left alone, so the compiler's stale check does not recompile
+     * the module on every build; a record whose schema is gone is deleted.
+     */
     public List<Path> writeTo(Path root) {
         Path dir = root.resolve(pkg.replace('.', '/'));
         List<Path> written = new ArrayList<>();
@@ -54,8 +59,15 @@ public final class RecordGenerator {
             Files.createDirectories(dir);
             for (Map.Entry<String, String> e : generate().entrySet()) {
                 Path file = dir.resolve(e.getKey() + ".java");
-                Files.writeString(file, e.getValue());
+                if (!Files.exists(file) || !Files.readString(file).equals(e.getValue())) {
+                    Files.writeString(file, e.getValue());
+                }
                 written.add(file);
+            }
+            try (var stale = Files.list(dir)) {
+                for (Path file : stale.filter(f -> !written.contains(f)).toList()) {
+                    Files.delete(file);
+                }
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);

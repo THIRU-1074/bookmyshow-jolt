@@ -1,10 +1,8 @@
 package dev.thiru.bms.features.booking;
 
-import dev.thiru.bms.features.booking.BookingDtos.BookingDto;
-import dev.thiru.bms.features.booking.BookingDtos.BookingRequest;
-import dev.thiru.bms.features.booking.BookingDtos.CheckoutDto;
-import dev.thiru.bms.features.booking.BookingDtos.HoldDto;
-import dev.thiru.bms.features.booking.BookingDtos.HoldRequest;
+import dev.thiru.bms.api.generated.BookingRequest;
+import dev.thiru.bms.api.generated.Hold;
+import dev.thiru.bms.api.generated.HoldRequest;
 import dev.thiru.bms.kernel.Money;
 import dev.thiru.bms.kernel.SeatId;
 import dev.thiru.bms.kernel.booking.Booking;
@@ -103,7 +101,7 @@ public final class BookingRoutes implements RouteModule {
                     Principal who = Principal.of(req);
                     res.noStore()
                             .json(
-                                    BookingDto.of(
+                                    BookingDtos.booking(
                                             queries.get(
                                                     who.userId(), who.isAdmin(), req.param("id"))));
                 });
@@ -116,7 +114,7 @@ public final class BookingRoutes implements RouteModule {
                     res.status(201)
                             .noStore()
                             .json(
-                                    new CheckoutDto(
+                                    new dev.thiru.bms.api.generated.Checkout(
                                             c.paymentId(),
                                             c.checkoutUrl(),
                                             c.amount(),
@@ -129,7 +127,7 @@ public final class BookingRoutes implements RouteModule {
                 (req, res) -> {
                     long userId = Principal.of(req).userId();
                     Booking done = cancel.execute(userId, req.param("id"));
-                    res.noStore().json(BookingDto.of(queries.get(userId, false, done.id())));
+                    res.noStore().json(BookingDtos.booking(queries.get(userId, false, done.id())));
                 });
         r.get("/api/bookings/:id/ticket", this::ticket);
     }
@@ -142,7 +140,7 @@ public final class BookingRoutes implements RouteModule {
         res.status(201)
                 .noStore()
                 .json(
-                        new HoldDto(
+                        new Hold(
                                 h.hold().id(),
                                 h.hold().showId(),
                                 h.hold().seats().stream().map(SeatId::toString).toList(),
@@ -158,7 +156,7 @@ public final class BookingRoutes implements RouteModule {
         }
         long userId = Principal.of(req).userId();
         Booking b = create.execute(userId, in.holdId());
-        res.status(201).noStore().json(BookingDto.of(queries.get(userId, false, b.id())));
+        res.status(201).noStore().json(BookingDtos.booking(queries.get(userId, false, b.id())));
     }
 
     private void list(Request req, Response res) {
@@ -173,7 +171,7 @@ public final class BookingRoutes implements RouteModule {
                                         statuses,
                                         page.page(),
                                         page.size()),
-                                BookingDto::of));
+                                BookingDtos::booking));
     }
 
     private void ticket(Request req, Response res) {

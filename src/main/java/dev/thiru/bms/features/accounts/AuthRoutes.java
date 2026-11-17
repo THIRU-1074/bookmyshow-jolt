@@ -1,10 +1,9 @@
 package dev.thiru.bms.features.accounts;
 
-import dev.thiru.bms.features.accounts.AccountsDtos.AuthResponse;
-import dev.thiru.bms.features.accounts.AccountsDtos.LoginRequest;
-import dev.thiru.bms.features.accounts.AccountsDtos.RegisterRequest;
-import dev.thiru.bms.features.accounts.AccountsDtos.TokenResponse;
-import dev.thiru.bms.features.accounts.AccountsDtos.UserDto;
+import dev.thiru.bms.api.generated.AuthResponse;
+import dev.thiru.bms.api.generated.LoginRequest;
+import dev.thiru.bms.api.generated.RegisterRequest;
+import dev.thiru.bms.api.generated.TokenResponse;
 import dev.thiru.bms.kernel.account.Role;
 import dev.thiru.bms.kernel.account.User;
 import dev.thiru.bms.ports.RefreshTokenStore;
@@ -121,7 +120,7 @@ public final class AuthRoutes implements RouteModule {
                             accounts.find(Principal.of(req).userId())
                                     .orElseThrow(
                                             () -> ApiException.unauthenticated("Unknown user"));
-                    res.noStore().json(UserDto.of(u));
+                    res.noStore().json(AccountsDtos.user(u));
                 });
     }
 
@@ -133,7 +132,9 @@ public final class AuthRoutes implements RouteModule {
                 .noStore()
                 .json(
                         new AuthResponse(
-                                UserDto.of(user), pair.accessToken(), ACCESS_TTL.toSeconds()));
+                                AccountsDtos.user(user),
+                                pair.accessToken(),
+                                ACCESS_TTL.toSeconds()));
     }
 
     /** The refresh cookie's attributes; {@code Secure} only when the request came over HTTPS. */

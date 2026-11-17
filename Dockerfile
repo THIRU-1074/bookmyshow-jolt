@@ -14,6 +14,8 @@ WORKDIR /build
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 COPY src ./src
+# The build generates the API records (dev.thiru.bms.api.generated) from the schema.
+COPY api/openapi.yaml ./api/openapi.yaml
 # No fat jar: package the app classes, then copy runtime dependencies next to them.
 RUN mvn -B -q package -DskipTests -Dspotless.check.skip=true -Djacoco.skip=true \
     && mvn -B -q dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory=/build/lib \
