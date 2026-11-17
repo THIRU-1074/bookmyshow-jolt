@@ -315,7 +315,8 @@ public final class FakeWorld implements UnitOfWork, Repositories, PaymentGateway
     public CatalogRepositories.Cities cities() {
         return new CatalogRepositories.Cities() {
             public List<City> findAll() {
-                return List.copyOf(d.cities.values());
+                // As SqlCatalog: ORDER BY name.
+                return d.cities.values().stream().sorted(Comparator.comparing(City::name)).toList();
             }
 
             public Optional<City> findById(String id) {
@@ -349,7 +350,11 @@ public final class FakeWorld implements UnitOfWork, Repositories, PaymentGateway
             }
 
             public List<Screen> findByCinema(long cinemaId) {
-                return d.screens.values().stream().filter(s -> s.cinemaId() == cinemaId).toList();
+                // As SqlCatalog: ORDER BY name, id.
+                return d.screens.values().stream()
+                        .filter(s -> s.cinemaId() == cinemaId)
+                        .sorted(Comparator.comparing(Screen::name).thenComparing(Screen::id))
+                        .toList();
             }
         };
     }

@@ -314,6 +314,37 @@ public abstract class RepositoriesContract {
     }
 
     @Test
+    protected void citiesAndTheScreensOfACinemaComeBackOrderedByName() {
+        World w = world();
+        Screen audi =
+                tx(
+                        r ->
+                                r.catalogWrites()
+                                        .saveScreen(
+                                                new Screen(
+                                                        0,
+                                                        w.cinema().id(),
+                                                        "Audi 2",
+                                                        w.screen().layout())));
+        tx(
+                r ->
+                        r.catalogWrites()
+                                .saveCity(
+                                        City.of(
+                                                w.cityId() + "-a",
+                                                "AAA " + w.cityId(),
+                                                "Asia/Kolkata")));
+        tx(
+                r -> {
+                    assertEquals(
+                            List.of(audi, w.screen()), r.screens().findByCinema(w.cinema().id()));
+                    List<String> names = r.cities().findAll().stream().map(City::name).toList();
+                    assertEquals(names.stream().sorted().toList(), names);
+                    return null;
+                });
+    }
+
+    @Test
     protected void nameChecksIgnoreCaseAndExcludeTheEntityItself() {
         World w = world();
         String name = w.cinema().name().toUpperCase(java.util.Locale.ROOT);
