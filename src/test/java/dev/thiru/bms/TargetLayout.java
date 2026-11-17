@@ -15,17 +15,29 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * The dependency rules of the target layout (docs/restructure/PLAN.md): vertical slices under
- * {@code features.<slice>}, a pure {@code kernel}, I/O seams in {@code ports}, one adapter per port
- * and {@code Main} as the only composition root.
+ * The dependency rules of the layout (SPEC section 10, docs/restructure/PLAN.md): vertical slices
+ * under {@code features.<slice>}, a pure {@code kernel}, I/O seams in {@code ports}, one adapter
+ * per port, the shared HTTP kit in {@code web} and {@code Main} as the only composition root.
  *
- * <p>It reads source, not bytecode, so it also sees fully qualified names written inline. A rule
- * whose package does not exist yet has nothing to check and passes; that is what lets the rules go
- * in before the first slice moves.
+ * <ol>
+ *   <li>{@code kernel} imports only the JDK, and never JDBC.
+ *   <li>{@code ports} import only the kernel and the JDK.
+ *   <li>{@code features.<slice>} never imports another slice or an adapter, and otherwise imports
+ *       only {@link #FEATURE_IMPORTS}.
+ *   <li>{@code adapters} never import {@code web} or {@code features}.
+ *   <li>{@code web} imports features only in {@code WebModules}, the route table.
+ *   <li>Only {@code Main} names adapters.
+ * </ol>
+ *
+ * <p>It reads source, not bytecode, so it also sees fully qualified names written inline.
  */
 final class TargetLayout {
 
     static final String BASE = "dev.thiru.bms.";
+
+    /** What a slice may import besides its own slice. */
+    static final List<String> FEATURE_IMPORTS =
+            List.of("java.", "in.jolt.", BASE + "kernel.", BASE + "ports.", BASE + "web.");
 
     private static final Pattern IMPORT =
             Pattern.compile(
@@ -60,6 +72,9 @@ final class TargetLayout {
             if (!jdk && !dep.startsWith(BASE + "kernel.")) {
                 return "kernel imports only the JDK";
             }
+            if (dep.startsWith("java.sql.")) {
+                return "kernel never touches JDBC";
+            }
             return null;
         }
         if (inPackage(pkg, "ports")) {
@@ -73,15 +88,25 @@ final class TargetLayout {
             if (dep.startsWith(BASE + "adapters.")) {
                 return "features never import adapters";
             }
-            if (dep.startsWith(BASE + "domain.") || dep.startsWith(BASE + "application.")) {
-                return "features never import the legacy layers";
-            }
             if (dep.startsWith(BASE + "features.")) {
                 String other = sliceOf(dep);
-                if (!other.equals(slice)) {
-                    return "feature " + slice + " never imports feature " + other;
-                }
+                return other.equals(slice)
+                        ? null
+                        : "feature " + slice + " never imports feature " + other;
             }
+            if (FEATURE_IMPORTS.stream().noneMatch(dep::startsWith)) {
+                return "features import only the kernel, ports, web, Jolt and the JDK";
+            }
+            return null;
+        }
+        if (inPackage(pkg, "adapters")
+                && (dep.startsWith(BASE + "web.") || dep.startsWith(BASE + "features."))) {
+            return "adapters never import web or features";
+        }
+        if (inPackage(pkg, "web")
+                && dep.startsWith(BASE + "features.")
+                && !rel.equals("web/WebModules.java")) {
+            return "web imports features only in WebModules";
         }
         if (dep.startsWith(BASE + "adapters.")
                 && !inPackage(pkg, "adapters")

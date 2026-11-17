@@ -12,11 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The target layout's dependency rules on the real sources, plus one fixture tree per rule that
- * breaks it, so a rule that silently stopped matching would fail here too. Since wave 1 the real
- * {@code kernel} and {@code ports} packages exist, and a copy of the real tree with one bad import
- * per rule proves the rules bite on them, not only on fixtures. The legacy layer rules stay in
- * {@link ArchitectureTest} until the last slice has moved.
+ * The single architecture guard: the layout's dependency rules ({@link TargetLayout}) on the real
+ * sources, plus one fixture tree per rule that breaks it, so a rule that silently stopped matching
+ * would fail here too. A copy of the real tree with one bad import per rule proves the rules bite
+ * on the real packages, not only on fixtures.
  */
 class TargetArchitectureTest {
 
@@ -35,13 +34,35 @@ class TargetArchitectureTest {
     }
 
     @Test
-    void theKernelAndPortsRulesHaveRealSourcesToCheck() throws IOException {
-        assertTrue(javaFiles(SOURCES.resolve("kernel")) >= 25, "kernel classes");
-        assertTrue(javaFiles(SOURCES.resolve("ports")) >= 8, "port interfaces");
+    void theSourcesHoldOnlyTheRootKernelPortsAdaptersWebAndFeatures() throws IOException {
+        try (Stream<Path> top = Files.list(SOURCES)) {
+            assertEquals(
+                    List.of("adapters", "features", "kernel", "ports", "web"),
+                    top.filter(Files::isDirectory)
+                            .map(d -> d.getFileName().toString())
+                            .sorted()
+                            .toList(),
+                    "the legacy domain and application layers are gone");
+        }
+        try (Stream<Path> slices = Files.list(SOURCES.resolve("features"))) {
+            assertEquals(
+                    List.of("accounts", "admin", "booking", "catalog", "live", "payments"),
+                    slices.map(d -> d.getFileName().toString()).sorted().toList());
+        }
     }
 
     @Test
-    void theRulesFireOnTheRealKernelAndPorts(@TempDir Path copy) throws IOException {
+    void everyRuleHasRealSourcesToCheck() throws IOException {
+        assertTrue(javaFiles(SOURCES.resolve("kernel")) >= 25, "kernel classes");
+        assertTrue(javaFiles(SOURCES.resolve("ports")) >= 8, "port interfaces");
+        assertTrue(javaFiles(SOURCES.resolve("features")) >= 30, "slice classes");
+        assertTrue(javaFiles(SOURCES.resolve("adapters")) >= 15, "adapters");
+        assertTrue(javaFiles(SOURCES.resolve("web")) >= 10, "web kit");
+        assertTrue(Files.isRegularFile(SOURCES.resolve("Main.java")), "Main");
+    }
+
+    @Test
+    void theRulesFireOnTheRealSources(@TempDir Path copy) throws IOException {
         try (Stream<Path> files = Files.walk(SOURCES)) {
             for (Path f : files.filter(Files::isRegularFile).toList()) {
                 Path to = copy.resolve(SOURCES.relativize(f).toString());
@@ -53,15 +74,40 @@ class TargetArchitectureTest {
         addImport(copy.resolve("kernel/Money.java"), "dev.thiru.bms.ports.Ids");
         addImport(copy.resolve("ports/Ids.java"), "dev.thiru.bms.adapters.ids.SecureIds");
         addImport(copy.resolve("ports/LiveSeats.java"), "dev.thiru.bms.web.Rbac");
+        addImport(copy.resolve("kernel/SeatId.java"), "java.sql.ResultSet");
+        addImport(
+                copy.resolve("features/booking/BookingSql.java"),
+                "dev.thiru.bms.features.catalog.CatalogSql");
+        addImport(copy.resolve("features/live/LiveSql.java"), "dev.thiru.bms.adapters.db.SqliteDb");
+        addImport(copy.resolve("features/admin/AdminSql.java"), "dev.thiru.bms.AppConfig");
+        addImport(copy.resolve("adapters/db/SqliteDb.java"), "dev.thiru.bms.web.Paging");
+        addImport(copy.resolve("web/Problems.java"), "dev.thiru.bms.features.booking.BookingSql");
+        addImport(copy.resolve("AppConfig.java"), "dev.thiru.bms.adapters.ids.SecureIds");
         assertEquals(
-                List.of(
-                        "kernel/booking/Booking.java: kernel imports only the JDK (in.jolt.App)",
-                        "kernel/Money.java: kernel imports only the JDK (dev.thiru.bms.ports.Ids)",
-                        "ports/Ids.java: ports import only the kernel and the JDK"
-                                + " (dev.thiru.bms.adapters.ids.SecureIds)",
-                        "ports/LiveSeats.java: ports import only the kernel and the JDK"
-                                + " (dev.thiru.bms.web.Rbac)"),
-                TargetLayout.violations(copy));
+                Stream.of(
+                                "AppConfig.java: only Main names adapters"
+                                        + " (dev.thiru.bms.adapters.ids.SecureIds)",
+                                "adapters/db/SqliteDb.java: adapters never import web or features"
+                                        + " (dev.thiru.bms.web.Paging)",
+                                "features/admin/AdminSql.java: features import only the kernel, ports,"
+                                        + " web, Jolt and the JDK (dev.thiru.bms.AppConfig)",
+                                "features/booking/BookingSql.java: feature booking never imports"
+                                        + " feature catalog (dev.thiru.bms.features.catalog.CatalogSql)",
+                                "features/live/LiveSql.java: features never import adapters"
+                                        + " (dev.thiru.bms.adapters.db.SqliteDb)",
+                                "kernel/booking/Booking.java: kernel imports only the JDK (in.jolt.App)",
+                                "kernel/Money.java: kernel imports only the JDK (dev.thiru.bms.ports.Ids)",
+                                "ports/Ids.java: ports import only the kernel and the JDK"
+                                        + " (dev.thiru.bms.adapters.ids.SecureIds)",
+                                "kernel/SeatId.java: kernel never touches JDBC (java.sql.ResultSet)",
+                                "ports/LiveSeats.java: ports import only the kernel and the JDK"
+                                        + " (dev.thiru.bms.web.Rbac)",
+                                "web/Problems.java: web imports features only in WebModules"
+                                        + " (dev.thiru.bms.features.booking.BookingSql)")
+                        .sorted()
+                        .toList(),
+                // Sorted: the walk order of upper- and lower-case names differs by platform.
+                TargetLayout.violations(copy).stream().sorted().toList());
     }
 
     private static long javaFiles(Path dir) throws IOException {
@@ -118,14 +164,44 @@ class TargetArchitectureTest {
     }
 
     @Test
-    void featureImportingALegacyLayerIsCaught() {
+    void featureImportingAnythingOffItsListIsCaught() {
+        String rule =
+                "features/catalog/Movies.java: features import only the kernel, ports, web,"
+                        + " Jolt and the JDK";
         assertEquals(
                 List.of(
-                        "features/catalog/Movies.java: features never import the legacy layers"
-                                + " (dev.thiru.bms.domain.port.Repositories)",
-                        "features/catalog/Movies.java: features never import the legacy layers"
-                                + " (dev.thiru.bms.application.CatalogQueries)"),
-                fixture("feature-imports-legacy"));
+                        rule + " (dev.thiru.bms.domain.port.Repositories)",
+                        rule + " (org.yaml.snakeyaml.Yaml)",
+                        rule + " (dev.thiru.bms.AppConfig)"),
+                fixture("feature-imports-unlisted"));
+    }
+
+    @Test
+    void kernelUsingJdbcIsCaught() {
+        assertEquals(
+                List.of(
+                        "kernel/catalog/ShowRow.java: kernel never touches JDBC"
+                                + " (java.sql.ResultSet)"),
+                fixture("kernel-imports-jdbc"));
+    }
+
+    @Test
+    void adapterImportingWebOrAFeatureIsCaught() {
+        String rule = "adapters/db/CachedCatalog.java: adapters never import web or features";
+        assertEquals(
+                List.of(
+                        rule + " (dev.thiru.bms.web.CatalogCache)",
+                        rule + " (dev.thiru.bms.features.catalog.CatalogSql)"),
+                fixture("adapter-imports-web"));
+    }
+
+    @Test
+    void webImportingAFeatureOutsideTheRouteTableIsCaught() {
+        assertEquals(
+                List.of(
+                        "web/Problems.java: web imports features only in WebModules"
+                                + " (dev.thiru.bms.features.booking.BookingRoutes)"),
+                fixture("web-imports-feature"));
     }
 
     @Test
