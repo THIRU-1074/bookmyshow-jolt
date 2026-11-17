@@ -17,7 +17,8 @@ import java.util.Map;
  * lives here rather than in either slice.
  *
  * <p>{@code version} is a content hash of every seat status, so it changes exactly when the map
- * does.
+ * does. Each status is hashed by its name, never by the enum constant's identity hash, so the same
+ * seat state has the same version, and the seat map the same ETag, after a restart.
  */
 public record SeatMap(
         long showId, long version, List<Price> categories, List<Row> rows, long holdTtlSeconds) {
@@ -50,7 +51,7 @@ public record SeatMap(
             }
         }
         List<Row> rows = new ArrayList<>();
-        List<Object> fingerprint = new ArrayList<>();
+        List<String> fingerprint = new ArrayList<>();
         for (SeatLayout.Row row : layout.rows()) {
             List<Seat> seats = new ArrayList<>();
             for (int n = 1; n <= row.seats(); n++) {
@@ -60,7 +61,7 @@ public record SeatMap(
                                 ? Status.BLOCKED
                                 : taken.getOrDefault(id, Status.AVAILABLE);
                 seats.add(new Seat(id, n, row.category(), status));
-                fingerprint.add(status);
+                fingerprint.add(status.name());
             }
             rows.add(new Row(row.row(), seats, row.aisleAfter()));
         }

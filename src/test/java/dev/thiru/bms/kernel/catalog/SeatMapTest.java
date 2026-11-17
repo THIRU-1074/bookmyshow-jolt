@@ -7,10 +7,13 @@ import dev.thiru.bms.kernel.SeatId;
 import dev.thiru.bms.kernel.booking.SeatLock;
 import dev.thiru.bms.kernel.catalog.SeatMap.Price;
 import dev.thiru.bms.kernel.catalog.SeatMap.Status;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 class SeatMapTest {
@@ -88,6 +91,52 @@ class SeatMapTest {
         assertEquals(held.version(), map(List.of(held("A2", NOW.plusSeconds(90)))).version());
         assertEquals(before.version(), map(List.of(held("A2", NOW))).version());
         assertEquals(before.version() & 0xffffffffL, before.version(), "unsigned 32 bits");
+    }
+
+    @Test
+    void everySingleSeatChangeChangesTheVersion() {
+        long before = map(List.of()).version();
+        for (SeatLayout.Row row : SeatLayoutTest.sample().rows()) {
+            for (int n = 1; n <= row.seats(); n++) {
+                String seat = row.row() + n;
+                if (SeatLayoutTest.sample().isBlocked(SeatId.parse(seat))) {
+                    continue;
+                }
+                long held = map(List.of(held(seat, NOW.plusSeconds(60)))).version();
+                long booked = map(List.of(booked(seat))).version();
+                assertNotEquals(before, held, seat + " held");
+                assertNotEquals(before, booked, seat + " booked");
+                assertNotEquals(held, booked, seat + " held then booked");
+            }
+        }
+    }
+
+    /**
+     * The version, and the seat map ETag built from it, must survive a restart: it hashes each
+     * status by name, never by the enum constant's identity hash.
+     */
+    @Test
+    void theVersionIsTheSameAcrossRestarts() throws Exception {
+        long here = new SeatMapVersionProbe().get();
+        assertEquals(here, versionInAFreshClassLoader(), "a second load of the kernel");
+        // Pinned: a fresh JVM must compute exactly this for the probe's seat state.
+        assertEquals(PROBE_VERSION, here);
+    }
+
+    static final long PROBE_VERSION = 1_434_321_867L;
+
+    @SuppressWarnings("unchecked")
+    private static long versionInAFreshClassLoader() throws Exception {
+        URL kernel = SeatMap.class.getProtectionDomain().getCodeSource().getLocation();
+        URL probe = SeatMapVersionProbe.class.getProtectionDomain().getCodeSource().getLocation();
+        try (URLClassLoader loader =
+                new URLClassLoader(
+                        new URL[] {kernel, probe}, ClassLoader.getPlatformClassLoader())) {
+            Class<?> status = loader.loadClass(Status.class.getName());
+            assertNotEquals(Status.class, status, "the kernel was loaded again");
+            Class<?> cls = loader.loadClass(SeatMapVersionProbe.class.getName());
+            return ((Supplier<Long>) cls.getDeclaredConstructor().newInstance()).get();
+        }
     }
 
     @Test
