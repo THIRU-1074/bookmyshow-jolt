@@ -285,7 +285,8 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 | `MAX_SEATS` | `10` | |
 | `SWEEP_INTERVAL` | `PT30S` | |
 | `SSE_MAX_STREAMS` | `1000` | |
-| `PUBLIC_BASE_URL` | `http://localhost:${PORT}` | checkout URLs and the mock webhook target |
+| `PUBLIC_BASE_URL` | `RENDER_EXTERNAL_URL`, else `http://localhost:${PORT}` | checkout URLs and the mock webhook target; an absolute http(s) URL, trailing slash ignored |
+| `RENDER_EXTERNAL_URL` | unset | set by Render to the service's public URL; read only as the `PUBLIC_BASE_URL` fallback, resolved in `AppConfig`, never in domain code |
 | `MOCK_GATEWAY` | `true` | |
 | `METRICS_TOKEN` | unset | enables `/_jolt/metrics` |
 | `TRUST_PROXY` | unset | comma-separated CIDRs for `JoltConfig.trustProxy` |
