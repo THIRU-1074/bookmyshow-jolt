@@ -196,7 +196,7 @@ The server also keeps `GET /api/cities`, `GET /api/movies` and `GET /api/movies/
 
 | Method, path | Role | Request | Response |
 |---|---|---|---|
-| GET /api/shows/{id}/seats | - | - | 200 `{showId, version, categories:[{code,name,amount}], rows:[{row, seats:[{id, number, category, status}], aisleAfter}], holdTtlSeconds}`; `version` is a content hash of the seat states (equal maps give equal versions; it is not a counter); status `AVAILABLE, HELD, BOOKED, BLOCKED`; `ETag` + `Cache-Control: no-cache` |
+| GET /api/shows/{id}/seats | - | - | 200 `{showId, version, categories:[{category,name,amount}], rows:[{row, seats:[{id, number, category, status}], aisleAfter}], holdTtlSeconds}`; `version` is a content hash of the seat states (equal maps give equal versions; it is not a counter); status `AVAILABLE, HELD, BOOKED, BLOCKED`; `ETag` + `Cache-Control: no-cache` |
 | GET /api/shows/{id}/events | - | - | SSE stream (below) |
 | POST /api/holds | U, key | `{showId, seats:["C7","C8"]}` | 201 `{id, showId, seats, amount, currency, expiresAt}`; 409 `SEAT_UNAVAILABLE`/`SHOW_STARTED`; 422 |
 | DELETE /api/holds/{id} | owner | - | 204; 404 if not owner or not ACTIVE |
