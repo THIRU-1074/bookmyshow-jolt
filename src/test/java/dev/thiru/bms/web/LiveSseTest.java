@@ -55,7 +55,7 @@ class LiveSseTest {
                 while ((line = in.readLine()) != null) {
                     seen.add(line);
                     if (!pushed && line.equals("event: snapshot")) {
-                        kit.live.push(9, "seat-held", "{\"showId\":9,\"seats\":[\"A2\"]}");
+                        kit.live.push(9, "41", "seat-held", "{\"showId\":9,\"seats\":[\"A2\"]}");
                         pushed = true;
                     }
                     if (line.equals("event: heartbeat") && seen.contains("event: seat-held")) {
@@ -69,6 +69,10 @@ class LiveSseTest {
                     seen.stream().anyMatch(l -> l.startsWith("data: {\"showId\":9,\"version\":")),
                     seen.toString());
             assertTrue(seen.contains("data: {\"showId\":9,\"seats\":[\"A2\"]}"), seen.toString());
+            // Seat events carry the hub's id; the snapshot and heartbeats carry none.
+            assertEquals(
+                    1, seen.stream().filter(l -> l.startsWith("id:")).count(), seen.toString());
+            assertEquals("id: 41", seen.get(seen.indexOf("event: seat-held") - 1), seen.toString());
             assertTrue(
                     seen.stream().anyMatch(l -> l.startsWith("data: {\"ts\":")), seen.toString());
             assertEquals(0, kit.live.openStreams());

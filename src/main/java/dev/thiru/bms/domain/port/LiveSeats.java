@@ -9,8 +9,17 @@ import java.util.Optional;
  */
 public interface LiveSeats {
 
-    /** One SSE message: event name and JSON data. */
-    record Message(String name, String data) {}
+    /** One SSE message: the stream's event id ({@code null} for none), event name and JSON data. */
+    record Message(String id, String name, String data) {
+
+        public Message(String name, String data) {
+            this(null, name, data);
+        }
+
+        public Message withId(String id) {
+            return new Message(id, name, data);
+        }
+    }
 
     interface Subscription extends AutoCloseable {
         /** Next message, or null on timeout or when the stream has ended. */

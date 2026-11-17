@@ -19,7 +19,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | Pub/sub hub for SSE | [#62](https://github.com/THIRU-1074/custom-Http-Server/issues/62) | `adapters.live.LiveSeatHub` publishes to a Jolt `Hub` (one topic per show; cap, bounded queues and slow-subscriber drop are Jolt's) and keeps a small hand-off queue so the pull-based `LiveSeats` port and the snapshot-first route stay as they are; it also tracks streams to end them at shutdown (new gap C) | done (v0.4.1) |
 | Static files and views from the classpath | [#68](https://github.com/THIRU-1074/custom-Http-Server/issues/68) | `Main` (`Static.serve("/", STATIC_DIR).spaFallback("index.html")`, `VIEWS_DIR`), `Dockerfile` | in progress |
 | `JoltTest` support for SSE and streams | [#69](https://github.com/THIRU-1074/custom-Http-Server/issues/69) | `web.LiveSseTest` over a loopback socket | open |
-| SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | `web.LiveModule` (`snapshot` event on every connect) | open |
+| SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | seat events carry the hub's `id:` through `EventStream.event(id, name, data)`. Kept on purpose: a `snapshot` on every connect, including one with `Last-Event-ID`, because SPEC 7 and the UI rely on it and it already restores the full state; replaying older events after it adds nothing | done (v0.4.1) |
 | App-defined metrics and health checks | [#71](https://github.com/THIRU-1074/custom-Http-Server/issues/71) | `GET /api/health` DB check in `web.WebModules`, `GET /api/admin/stats` in `web.AdminModule` | open |
 | Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | [#76](https://github.com/THIRU-1074/custom-Http-Server/issues/76) | none: `JwtAuth.middleware`, `Auth.requireRole`, `RateLimit` and `Csrf.protect` are installed as they are | done (v0.4.1) |
 | `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | [#77](https://github.com/THIRU-1074/custom-Http-Server/issues/77) | bodies now come from `app.onError((e, req) -> ...)` and Jolt adds `requestId`; `web.Problems.middleware` only re-throws domain errors as `ApiException` (an `HttpException`) and unexpected ones as a bare 500, see new gap A below | done (v0.4.1) |
@@ -37,7 +37,6 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | #56 | `src/main/java/dev/thiru/bms/adapters/db/Sqlite.java` |
 | #68 | `src/main/java/dev/thiru/bms/Main.java`, `Dockerfile` |
 | #69 | `src/test/java/dev/thiru/bms/web/LiveSseTest.java` |
-| #70 | `src/main/java/dev/thiru/bms/web/LiveModule.java` |
 | #71 | `src/main/java/dev/thiru/bms/web/WebModules.java` (`/api/health` DB check) |
 
 ## New gaps found in v0.4.1 (not filed yet)

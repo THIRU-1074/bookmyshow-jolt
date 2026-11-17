@@ -28,12 +28,12 @@ class LiveSeatHubTest {
     void heldEventsBecomeSeatHeldMessages() throws Exception {
         try (LiveSeats.Subscription sub = hub.subscribe(7).orElseThrow()) {
             hub.publish(new SeatEvent.Held(7, SEATS, Instant.parse("2026-11-20T13:07:00Z")));
+            LiveSeats.Message m = sub.poll(WAIT);
+            assertEquals("seat-held", m.name());
             assertEquals(
-                    new LiveSeats.Message(
-                            "seat-held",
-                            "{\"showId\":7,\"seats\":[\"C7\",\"C8\"],"
-                                    + "\"until\":\"2026-11-20T13:07:00Z\"}"),
-                    sub.poll(WAIT));
+                    "{\"showId\":7,\"seats\":[\"C7\",\"C8\"],"
+                            + "\"until\":\"2026-11-20T13:07:00Z\"}",
+                    m.data());
         }
     }
 
@@ -44,15 +44,15 @@ class LiveSeatHubTest {
                     new SeatEvent.Released(
                             7, List.of(SeatId.parse("C7")), SeatEvent.Reason.EXPIRED));
             hub.publish(new SeatEvent.Booked(7, SEATS));
+            LiveSeats.Message released = sub.poll(WAIT);
+            LiveSeats.Message booked = sub.poll(WAIT);
+            assertEquals("seat-released", released.name());
             assertEquals(
-                    new LiveSeats.Message(
-                            "seat-released",
-                            "{\"showId\":7,\"seats\":[\"C7\"],\"reason\":\"EXPIRED\"}"),
-                    sub.poll(WAIT));
-            assertEquals(
-                    new LiveSeats.Message(
-                            "seat-booked", "{\"showId\":7,\"seats\":[\"C7\",\"C8\"]}"),
-                    sub.poll(WAIT));
+                    "{\"showId\":7,\"seats\":[\"C7\"],\"reason\":\"EXPIRED\"}", released.data());
+            assertEquals("seat-booked", booked.name());
+            assertEquals("{\"showId\":7,\"seats\":[\"C7\",\"C8\"]}", booked.data());
+            // Ids come from the hub and increase in publish order.
+            assertTrue(Long.parseLong(booked.id()) > Long.parseLong(released.id()));
         }
     }
 

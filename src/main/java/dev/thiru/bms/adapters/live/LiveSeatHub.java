@@ -25,7 +25,8 @@ import java.util.concurrent.TimeUnit;
  * subscriber; publishing never blocks, and a subscriber that falls {@code queueSize} messages
  * behind is dropped so one stalled browser cannot hold up booking transactions. Each stream hands
  * messages to the route through a small local queue so the {@link LiveSeats} port can stay pull
- * based. Replay is off: every connect starts with a full snapshot (SPEC 7).
+ * based. Each message carries the hub's event id, which increases in publish order. Replay is off:
+ * every connect starts with a full snapshot (SPEC 7), so events from before it add nothing.
  */
 public final class LiveSeatHub implements LiveSeats, SeatEventPublisher {
 
@@ -117,7 +118,8 @@ public final class LiveSeatHub implements LiveSeats, SeatEventPublisher {
 
         /** Runs on the hub's thread for this subscriber; blocking here backs up the hub queue. */
         private void deliver(long id, Message m) throws InterruptedException {
-            while (!handoff.offer(m, 100, TimeUnit.MILLISECONDS)) {
+            Message withId = m.withId(Long.toString(id));
+            while (!handoff.offer(withId, 100, TimeUnit.MILLISECONDS)) {
                 if (!isOpen()) {
                     // A throw ends the hub subscription.
                     throw new IllegalStateException("stream closed");
