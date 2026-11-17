@@ -39,6 +39,10 @@ abstract class DbTest {
         return uow.inTransaction(work);
     }
 
+    boolean flag(Function<Repositories, Boolean> work) {
+        return uow.inTransaction(work);
+    }
+
     long newUser(String email) {
         return tx(r ->
                         r.users()

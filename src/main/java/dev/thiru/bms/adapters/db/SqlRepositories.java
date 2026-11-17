@@ -42,31 +42,31 @@ final class SqlRepositories implements Repositories {
 
     @Override
     public BookingRepositories.Users users() {
-        throw new UnsupportedOperationException();
+        return new SqlBookings.Users(sql);
     }
 
     @Override
     public BookingRepositories.Holds holds() {
-        throw new UnsupportedOperationException();
+        return new SqlBookings.Holds(sql);
     }
 
     @Override
     public SeatLockRepository locks() {
-        throw new UnsupportedOperationException();
+        return new SqlSeatLocks(sql);
     }
 
     @Override
     public BookingRepositories.Bookings bookings() {
-        throw new UnsupportedOperationException();
+        return new SqlBookings.Bookings(sql);
     }
 
     @Override
     public BookingRepositories.Payments payments() {
-        throw new UnsupportedOperationException();
+        return new SqlBookings.Payments(sql);
     }
 
     @Override
     public BookingRepositories.PaymentEvents paymentEvents() {
-        throw new UnsupportedOperationException();
+        return new SqlBookings.PaymentEvents(sql);
     }
 }
