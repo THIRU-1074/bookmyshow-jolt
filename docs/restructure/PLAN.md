@@ -1,6 +1,6 @@
 # ADR 0001: vertical feature slices around a thin hexagon
 
-- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade; wave 1 (kernel, ports, `ports.Db`) is merged too. Wave 2 (catalog, live and accounts slices; legacy modules deleted) is merged; see [Wave 2 record](#wave-2-record). Wave 3 (booking slice) is done on `feat/restructure-wave3`; see [Wave 3 record](#wave-3-record). Next: wave 4, payments; see [Wave 4 brief](#wave-4-brief-payments) and [How to build a slice](#how-to-build-a-slice).
+- **Status:** accepted (user-approved), **in migration**. Wave 0 (guardrails) is merged onto `integration` after the Jolt v0.4.1 upgrade; wave 1 (kernel, ports, `ports.Db`) is merged too. Wave 2 (catalog, live and accounts slices; legacy modules deleted) is merged; see [Wave 2 record](#wave-2-record). Wave 3 (booking slice) is merged; see [Wave 3 record](#wave-3-record). Wave 5 (admin and owner slice) is done on `feat/restructure-wave5`; see [Wave 5 record](#wave-5-record). In progress: wave 4, payments; see [Wave 4 brief](#wave-4-brief-payments) and [How to build a slice](#how-to-build-a-slice).
 - **Date:** 2026-11-17
 - **Supersedes:** the layer-first layering of SPEC section 10 once the last wave lands.
 
@@ -216,7 +216,7 @@ Each wave starts from a green `mvn -B verify` on `integration`, and ends green w
 | 2 | catalog+live, accounts (parallel) | `features.catalog` (public catalog, seat map; `kernel.catalog.SeatMap`), `features.live` (SSE), `features.accounts` (auth, me, `JoltRefreshStore`) | **done**, see [Wave 2 record](#wave-2-record) |
 | 3 | booking, alone | `features.booking`: holds, bookings, checkout, cancel, ticket, `ExpireSweep`, `Outcome`, owned-booking SQL; events via `afterCommit` | **done**, see [Wave 3 record](#wave-3-record). `BookingModule`, `CreateHold`, `ExpireSweep` deleted; `CreateBooking`, `Checkout`, `CancelBooking`, `BookingQueries`, `Outcome` kept as test fixtures until wave 5; `EventBuffer` and `BookingOps` stay until waves 4 and 5 |
 | 4 | payments | `features.payments`: webhook, mock gateway, their booking/payment transition SQL | E2E payment journey green; `PaymentModule`, `ProcessPaymentWebhook`, `MockGatewayPayments` deleted (see [Wave 4 brief](#wave-4-brief-payments)) |
-| 5 | admin | `features.admin`: catalog writes, reports, stats, users and roles, owner links, show cancel, `CinemaScope` lookup | `OwnerApiTest`, `AdminApiTest`, `AdminUsersApiTest` moved and green; `AdminModule`, `OwnerModule`, admin use cases deleted |
+| 5 | admin | `features.admin`: catalog writes, reports, stats, users and roles, owner links, show cancel, `CinemaScope` lookup | **done**, see [Wave 5 record](#wave-5-record) (ran before wave 4; `application.CancelShow` stays as a wave 4 test fixture) |
 | 6 | integration | delete `Repositories`, `UnitOfWork`, repository interfaces, `SqlRepositories`, `SqlCatalog/Bookings/Admin/SeatLocks`, `FakeWorld`, `WebDeps`, the rest of `Dtos`, `ArchitectureTest`; generation moves to `generate-sources`; SPEC 10 drops "in migration"; re-measure BASELINE | `src/main/java` has only root, `kernel`, `ports`, `adapters`, `web`, `features` |
 
 Wave order reasoning: read-only slices first (no shared writes, lowest risk, proves the pattern and `ports.Db`); booking before payments because payments reuses booking's transitions; admin last because it touches the most tables and depends on every earlier slice's SQL being settled.
@@ -374,6 +374,96 @@ Per package, from wave 2 to wave 3:
 
 1. **Gateway calls inside the IMMEDIATE transaction.** `Checkout` calls `PaymentGateway.createSession`, and `CancelBooking` calls `refund`, inside `BEGIN IMMEDIATE`. So do the webhook's full refund and `CancelShow`. This keeps "a failed refund rolls the cancel back", but a slow real gateway would hold SQLite's only writer lock for the length of an HTTP call. Wave 4 must either accept this for the mock gateway, recording the decision here, or design an outbox: commit the state change with a pending refund, call the gateway after commit, and settle it in a second transaction. Nothing changes behaviour until a real gateway is planned.
 2. **No contract covers a refund failure.** `PaymentGatewayContract` checks sessions and negative amounts, but not that a failing refund throws. The booking slice's cancel rollback, the webhook's late-success refund and `CancelShow` all depend on that. `MockPaymentGateway` never fails, so only `RecordingGateway.failRefunds` exercises it. Wave 4 should add the rule to the contract, with a way for each implementation to be made to fail, or record why the mock is exempt.
+
+## Wave 5 record
+
+Done on `feat/restructure-wave5`, from `integration` at `ee03672` (wave 3 merged), before wave 4.
+
+- `feat/slice-admin` was merged with `--no-ff` (`371fc1f`). It holds `kernel.account.CinemaScope`, the two ported test fakes, the slice and `docs/restructure/handback-admin.md`.
+- The fakes `RecordingGateway` and `RecordingEvents` were byte-identical to wave 3's, so they merged with no change.
+- Step 3 then ran in two commits.
+
+No schema edit. These are green: `ApiSchemaTest`, both `EndToEndTest` journeys (the owner journey on the slice), `RbacTest`, `RbacMatrixTest`, `RecordGeneratorTest`, `CatalogCacheTest`, `ProcessPaymentWebhookTest`, the architecture tests and every contract suite. **617 tests** (616 after wave 3).
+
+**The slice** (`features.admin`, 8 files, 2 085 lines):
+
+- `AdminRoutes` serves the 22 `/api/admin` routes and `OwnerRoutes` the 7 `/api/owner` routes.
+- The use cases are `AdminCatalog`, `CancelShow`, `AdminReports` and `UserAdmin`, on `ports.Db`.
+- `AdminSql` holds the shared reads, the `cinema_owner` lookup, and the JSON column writers, byte for byte as the legacy adapter writes them.
+- `AdminDtos` holds the records.
+- Owners are scoped by `kernel.account.CinemaScope.forCaller(userId, isAdmin)`, with the links read in the request's transaction. Anything out of scope is 404.
+- The pipeline still clears the public catalog cache after every successful admin or owner write.
+
+**Equivalence.** Before step 3, the legacy modules and the slice ran the same 132-request script on identical V2 databases (hand-back, section 4). There were 0 differences in status, body and headers. The seat events, the refunds and 1 026 rows across 14 tables were also identical.
+
+**Step 3, admin** (`f79d21f`):
+
+- `WebModules.routes` mounts `AdminRoutes(deps.db(), deps.clock(), deps.gateway(), deps.publisher(), deps.live(), idempotent)` and `OwnerRoutes(deps.db(), deps.clock(), deps.gateway(), deps.publisher(), idempotent)`. These replace the five legacy statements.
+- `WEB_RECORDS` points the 14 admin schemas and the 7 admin request records at `features.admin.AdminDtos` (replace). `City`, `Cinema` and `MovieDetail` list both the catalog and admin copies.
+- **Deleted main code** (1 369 lines): `web.AdminModule` (414), `web.OwnerModule` (138) and `web.Dtos` (236, now empty: its last records were the admin ones). Also `application.AdminCatalog` (287), `AdminReports` (113), `UserAdmin` (117) and `CinemaScope` (34), and `Principal.cinemaScope()`.
+- **Deleted tests** (1 130 lines), all ported to the slice:
+  - `AdminApiTest`, `AdminUsersApiTest` and `OwnerApiTest`
+  - `application.AdminCatalogTest`, `CinemaScopeTest`, `UserAdminTest` and `CancelShowTest`
+  - the two report cases of `AdminReportsAndQueriesTest`
+- `RbacTest` now keeps its own owner request helpers instead of borrowing `OwnerApiTest`'s.
+- `RBAC.md` names the slice classes. Behaviour is unchanged.
+- **Kept, decided by the main session:**
+  - `application.CancelShow`, without its scope overload, as a test fixture for `ProcessPaymentWebhookTest` until wave 4.
+  - Live streams of a cancelled show still end at their next heartbeat. Jolt issue #83 tracks closing a Hub topic.
+
+**Step 3, booking fixtures** (`aa33e22`). Wave 3 had kept five fixtures for waves 4 and 5. Once the admin tests were gone, two of them had no remaining users:
+
+- **Deleted:** `CancelBooking` (67 lines) and `BookingQueries` (90), with `CancelBookingTest` (158) and the two `BookingQueries` cases of `AdminReportsAndQueriesTest`. `features.booking` covers them.
+- **Kept for wave 4:** `CreateBooking`, `Checkout` and `Outcome`. Their notes now name the users: `ProcessPaymentWebhookTest` and the mock gateway case, which is all that is left of `AdminReportsAndQueriesTest`. `application.CreateBookingTest` and `CheckoutTest` stay with them.
+
+**Smoke test.** After `npm run build` in `web/`, the packaged app (`java -cp "target/lib/*;target/bookmyshow-jolt-*.jar"`) ran with `STATIC_DIR` unset, `PORT=18099`, a temp DB, the admin env vars, `MOCK_GATEWAY=true` and `TRUST_PROXY=127.0.0.1`. Results:
+
+- **Admin:**
+  - login 200
+  - create city 201: `GET /api/cities` listed `pune` straight after, though the same URL had been cached a moment before
+  - create movie 201, cinema 201, screen 201 (capacity 20) and show 201
+  - register a user, promote to `THEATRE_OWNER` 200, link the cinema 200 (`cinemaIds [7]`)
+- **Owner:**
+  - my cinemas lists only cinema 7 with its screen
+  - create show 201, reports 200 (total 2)
+  - another cinema's screens 404 `Cinema not found`, another cinema's show report 404, `/api/admin/stats` 403
+- **Audience and cancel:**
+  - hold 201 (50000), booking 201, checkout 201, mock gateway pay 303, booking `CONFIRMED`
+  - the owner's report showed booked 2 and revenue 50000
+  - the owner cancelled the show: 200, `refunded 1`. The booking became `REFUNDED` with a 50000 of 50000 refund, and the report shows `CANCELLED`, booked 0, revenue 0, refunded 50000
+- **Admin again:** self-demote 409 `You cannot remove your own ADMIN role`, stats 200, health `UP`, index 200 (`Houselights`)
+
+**Deleted in wave 5:** 1 534 main lines (9 classes, the last of `Dtos`, and `Principal.cinemaScope()`) and 1 317 test lines (9 test classes and 4 cases).
+
+**Size** (`src/main/java` and `src/test/java`, files / lines):
+
+| | Baseline (`0893749`) | Wave 2 | Wave 3 | Wave 5 |
+|---|---:|---:|---:|---:|
+| main | 111 / 10 295 | 118 / 11 222 | 126 / 12 241 | 126 / 12 864 |
+| test | 58 / 9 821 | 105 / 16 029 | 117 / 17 445 | 117 / 18 191 |
+| tests run | 356 | 567 | 616 | 617 |
+
+Per package, from wave 3 to wave 5:
+
+| Package | Wave 3 (files / lines) | Wave 5 (files / lines) |
+|---|---:|---:|
+| `application` | 15 / 1 323 | 9 / 613 |
+| `web` | 17 / 2 088 | 14 / 1 287 |
+| `features` | 22 / 3 009 | 30 / 5 094 (`admin` 2 085) |
+| `kernel` | 28 / 1 380 | 29 / 1 429 (adds `account.CinemaScope`) |
+
+`ports` (217), `adapters.db` (2 740) and `domain.port` (386) are unchanged. Main code grew by 623 lines. The slice owns SQL that `SqlAdmin`, `SqlCatalog`, `SqlBookings` and `SqlSeatLocks` still hold for `FakeWorld` and the repository tests, and wave 6 deletes that duplicate.
+
+**What remains.**
+
+- **Wave 4 (payments):**
+  - move `PaymentModule`, `ProcessPaymentWebhook` and `MockGatewayPayments` to `features.payments`
+  - then delete the last `application` classes: `CancelShow`, `CreateBooking`, `Checkout`, `Outcome`, `BookingOps` and `EventBuffer`, with `ProcessPaymentWebhookTest`, `AdminReportsAndQueriesTest`, `application.CreateBookingTest` and `CheckoutTest`
+  - also settle wave 3's two open items (gateway calls inside the write lock, and the refund-failure contract)
+- **Wave 6 (integration):**
+  - delete `Repositories`, `UnitOfWork`, the `domain.port` interfaces including `AdminRepositories`, `SqlRepositories`, `SqlCatalog/Bookings/Admin/SeatLocks`, their repository tests and `RepositoriesContract`, `FakeWorld`, `WebKit` (the legacy web tests that remain move to `SliceKit` first), `WebDeps` and `ArchitectureTest`
+  - move generation to `generate-sources`
+  - re-measure BASELINE
 
 ## Wave 2 briefs
 
