@@ -92,6 +92,10 @@ public final class WebModules {
         app.use("/api", rbac.gate());
         app.use("/api/admin", rbac.adminLayer());
         app.use("/api/owner", rbac.ownerLayer());
+        CatalogCache catalogCache = new CatalogCache(deps.clock());
+        catalogCache.metrics(app.metrics());
+        app.use("/api/admin", catalogCache.clearAfterWrites());
+        app.use("/api/owner", catalogCache.clearAfterWrites());
 
         Middleware idempotent = Idempotent.required(deps.idempotency());
         // Runs after the gate, so "user" is the verified subject.
@@ -101,7 +105,7 @@ public final class WebModules {
         BookingQueries bookings = new BookingQueries(deps.uow());
 
         app.module(new AuthModule(accounts, tokens));
-        app.module(new CatalogModule(catalog));
+        app.module(new CatalogModule(catalog, catalogCache));
         app.module(
                 new LiveModule(
                         catalog, deps.live(), deps.clock(), settings.sseHeartbeat(), mapper));

@@ -24,11 +24,11 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 | Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | [#76](https://github.com/THIRU-1074/custom-Http-Server/issues/76) | none: `JwtAuth.middleware`, `Auth.requireRole`, `RateLimit` and `Csrf.protect` are installed as they are | done (v0.4.1) |
 | `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | [#77](https://github.com/THIRU-1074/custom-Http-Server/issues/77) | bodies now come from `app.onError((e, req) -> ...)` and Jolt adds `requestId`; `web.Problems.middleware` only re-throws domain errors as `ApiException` (an `HttpException`) and unexpected ones as a bare 500, see new gap A below | done (v0.4.1) |
 
-Not needed for v1: [#63](https://github.com/THIRU-1074/custom-Http-Server/issues/63) TTL cache (ETag covers the catalog).
+[#63](https://github.com/THIRU-1074/custom-Http-Server/issues/63) TTL cache (v0.4.1): `web.CatalogCache` serves cities, the movie list and show listings from a 60 s `TtlCache` (the same minute as their `Cache-Control`), cleared after every successful admin or owner write; metrics `bms_catalog_cache_*`.
 
 ## Where each workaround lives
 
-Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a marker; #63 needs none.
+Found with `grep -rn "TODO(jolt#" src`. After the v0.4.1 upgrade no marker is left; the remaining workarounds are listed under the new gaps below, and SchemaRunner is kept on purpose.
 
 | Jolt issue | File holding the workaround |
 |---|---|
@@ -44,3 +44,4 @@ Found with `grep -rn "TODO(jolt#" src`. Every gap with workaround code has a mar
 | D | Registered health checks cannot be run from app code, and `/_jolt/health` only exists when metrics are exposed. An app that must keep its own health URL and shape cannot reuse the checks. | `/api/health` calls the same `dbUp` supplier as the `db` check, so the two cannot drift. | `web.WebModules` |
 | E | `Idempotency` writes its 400, 409, 422 and 503 refusals directly as `text/plain`, bypassing problem+json and `onError` (listed as a follow-up in the 0.4.1 notes). Its replay also restores the first request's `X-Request-Id`, because `RequestId` sets the header before the handler and the snapshot keeps it. | SPEC 7 wants problem+json with `code: IDEMPOTENCY`, and SPEC 9 wants each response to echo its own request id. | `web.Idempotent` re-throws refusals as `ApiException` and re-sets `X-Request-Id` on a replay; `adapters.db.SqlIdempotency` does not store `X-Request-Id`. |
 | F | `Migrations` cannot take over a database whose history another runner recorded: there is no baseline option ("treat V1..Vn as applied") or way to import an existing history table. | The app keeps its own `SchemaRunner`. | `adapters.db.SchemaRunner` |
+| G | `Request.rawQuery()` is not public (Jolt's own `Page.Result.link` uses it), so a cache key must be rebuilt from `query()` and `queryAll`. | Minor. | `web.CatalogCache.key` |
