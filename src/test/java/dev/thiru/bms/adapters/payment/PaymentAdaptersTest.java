@@ -3,7 +3,7 @@ package dev.thiru.bms.adapters.payment;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import dev.thiru.bms.application.ProcessPaymentWebhook;
+import dev.thiru.bms.ports.GatewayCallback;
 import dev.thiru.bms.ports.PaymentGateway;
 import java.net.URI;
 import java.time.Clock;
@@ -18,11 +18,11 @@ class PaymentAdaptersTest {
     private static final String SECRET = "webhook-secret-that-is-32-bytes-long!";
 
     @Test
-    void senderMapsUseCaseEventsToTheWireShape() {
+    void senderMapsPortEventsToTheWireShape() {
         var succeeded =
-                new ProcessPaymentWebhook.Event(
+                new GatewayCallback.Event(
                         "evt_1",
-                        ProcessPaymentWebhook.Type.PAYMENT_SUCCEEDED,
+                        GatewayCallback.SUCCEEDED,
                         "pay_1",
                         "mock_pay_1",
                         45000,
@@ -33,14 +33,8 @@ class PaymentAdaptersTest {
                         "evt_1", "payment.succeeded", "pay_1", "mock_pay_1", 45000, "INR", NOW),
                 MockGatewaySender.toWire(succeeded));
         var failed =
-                new ProcessPaymentWebhook.Event(
-                        "evt_2",
-                        ProcessPaymentWebhook.Type.PAYMENT_FAILED,
-                        "pay_1",
-                        "mock_pay_1",
-                        45000,
-                        "INR",
-                        NOW);
+                new GatewayCallback.Event(
+                        "evt_2", GatewayCallback.FAILED, "pay_1", "mock_pay_1", 45000, "INR", NOW);
         assertEquals("payment.failed", MockGatewaySender.toWire(failed).type());
     }
 

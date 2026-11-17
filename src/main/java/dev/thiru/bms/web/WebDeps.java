@@ -1,9 +1,9 @@
 package dev.thiru.bms.web;
 
-import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.domain.port.UnitOfWork;
 import dev.thiru.bms.kernel.booking.BookingPolicy;
 import dev.thiru.bms.ports.Db;
+import dev.thiru.bms.ports.GatewayCallback;
 import dev.thiru.bms.ports.Ids;
 import dev.thiru.bms.ports.LiveSeats;
 import dev.thiru.bms.ports.PasswordHasher;
@@ -44,7 +44,7 @@ public record WebDeps(
         IdempotencyStore idempotency,
         PaymentGateway gateway,
         SeatEvents publisher,
-        MockGatewayPayments.Sender mockSender,
+        GatewayCallback mockSender,
         LiveSeats live,
         BooleanSupplier dbUp,
         Settings settings) {
