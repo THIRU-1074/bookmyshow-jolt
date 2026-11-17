@@ -15,7 +15,10 @@ import dev.thiru.bms.domain.port.UnitOfWork;
 import java.time.Clock;
 import java.time.Instant;
 
-/** Admin show cancellation: refunds confirmed bookings, cancels open ones. Safe to repeat. */
+/**
+ * Show cancellation by an admin or a theatre owner of the show's cinema: refunds confirmed
+ * bookings, cancels open ones. Safe to repeat.
+ */
 public final class CancelShow {
 
     public record Result(int refunded, int cancelled, int holdsReleased) {}
@@ -34,15 +37,20 @@ public final class CancelShow {
     }
 
     public Result execute(long showId) {
+        return execute(CinemaScope.everything(), showId);
+    }
+
+    public Result execute(CinemaScope scope, long showId) {
         EventBuffer events = new EventBuffer();
-        Result result = uow.inTransaction(r -> run(r, showId, events));
+        Result result = uow.inTransaction(r -> run(r, scope, showId, events));
         events.publishTo(publisher);
         return result;
     }
 
-    private Result run(Repositories r, long showId, EventBuffer events) {
+    private Result run(Repositories r, CinemaScope scope, long showId, EventBuffer events) {
         Instant now = clock.instant();
         Show show = r.shows().findById(showId).orElseThrow(() -> DomainException.notFound("Show"));
+        scope.require(r, r.screens().findById(show.screenId()).orElseThrow().cinemaId(), "Show");
         if (show.status() != ShowStatus.CANCELLED) {
             r.shows().save(show.cancel());
         }

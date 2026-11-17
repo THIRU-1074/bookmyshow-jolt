@@ -14,7 +14,8 @@ import java.util.Set;
 
 /**
  * Account lifecycle. Public registration can only ever create an AUDIENCE account: roles are never
- * read from a request, so privilege comes only from {@link #ensureAdmin} (environment seeding).
+ * read from a request, so privilege comes only from {@link #ensureAdmin} (environment seeding) and
+ * from an administrator through {@link UserAdmin}.
  */
 public final class Accounts {
 

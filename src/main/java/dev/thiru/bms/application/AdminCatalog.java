@@ -13,13 +13,18 @@ import dev.thiru.bms.domain.port.Repositories;
 import dev.thiru.bms.domain.port.UnitOfWork;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Admin catalog writes. Callers pass already-built domain objects (their constructors validate);
- * this class adds the rules that need the database: existence, uniqueness and "still in use".
+ * Admin and theatre owner catalog writes. Callers pass already-built domain objects (their
+ * constructors validate); this class adds the rules that need the database: existence, uniqueness,
+ * "still in use" and, for the {@link CinemaScope} overloads, cinema ownership.
  */
 public final class AdminCatalog {
+
+    /** A cinema with its screens, layouts included. */
+    public record CinemaScreens(Cinema cinema, List<Screen> screens) {}
 
     private final UnitOfWork uow;
     private final Clock clock;
@@ -91,12 +96,26 @@ public final class AdminCatalog {
                 });
     }
 
+    /** The cinemas in scope, by name, each with its screens. */
+    public List<CinemaScreens> cinemas(CinemaScope scope) {
+        return uow.inTransaction(
+                r ->
+                        r.cinemaOwners().cinemas(scope.ownerId()).stream()
+                                .map(c -> new CinemaScreens(c, r.screens().findByCinema(c.id())))
+                                .toList());
+    }
+
     public Screen createScreen(long cinemaId, String name, SeatLayout layout) {
+        return createScreen(CinemaScope.everything(), cinemaId, name, layout);
+    }
+
+    public Screen createScreen(CinemaScope scope, long cinemaId, String name, SeatLayout layout) {
         return uow.inTransaction(
                 r -> {
                     r.cinemas()
                             .findById(cinemaId)
                             .orElseThrow(() -> DomainException.notFound("Cinema"));
+                    scope.require(r, cinemaId, "Cinema");
                     if (r.catalogWrites().screenNameTaken(cinemaId, name, 0)) {
                         throw DomainException.conflict("Screen name is taken in this cinema");
                     }
@@ -105,12 +124,17 @@ public final class AdminCatalog {
     }
 
     public Screen updateScreen(long id, String name, SeatLayout layout) {
+        return updateScreen(CinemaScope.everything(), id, name, layout);
+    }
+
+    public Screen updateScreen(CinemaScope scope, long id, String name, SeatLayout layout) {
         return uow.inTransaction(
                 r -> {
                     Screen old =
                             r.screens()
                                     .findById(id)
                                     .orElseThrow(() -> DomainException.notFound("Screen"));
+                    scope.require(r, old.cinemaId(), "Screen");
                     if (r.catalogWrites().screenNameTaken(old.cinemaId(), name, id)) {
                         throw DomainException.conflict("Screen name is taken in this cinema");
                     }
@@ -179,8 +203,24 @@ public final class AdminCatalog {
             String language,
             ShowFormat format,
             Map<String, Long> prices) {
+        return createShow(
+                CinemaScope.everything(), movieId, screenId, startsAt, language, format, prices);
+    }
+
+    /** The overlap rule and price checks are those of the admin route. */
+    public Show createShow(
+            CinemaScope scope,
+            long movieId,
+            long screenId,
+            Instant startsAt,
+            String language,
+            ShowFormat format,
+            Map<String, Long> prices) {
         return uow.inTransaction(
                 r -> {
+                    r.screens()
+                            .findById(screenId)
+                            .ifPresent(s -> scope.require(r, s.cinemaId(), "Screen"));
                     Show show = build(r, 0, movieId, screenId, startsAt, language, format, prices);
                     return r.catalogWrites().insertShow(show);
                 });

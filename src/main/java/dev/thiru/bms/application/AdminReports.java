@@ -2,15 +2,18 @@ package dev.thiru.bms.application;
 
 import dev.thiru.bms.domain.DomainException;
 import dev.thiru.bms.domain.Page;
+import dev.thiru.bms.domain.Show;
+import dev.thiru.bms.domain.ShowStatus;
 import dev.thiru.bms.domain.port.AdminRepositories.CategoryStat;
 import dev.thiru.bms.domain.port.AdminRepositories.ShowStat;
+import dev.thiru.bms.domain.port.Repositories;
 import dev.thiru.bms.domain.port.UnitOfWork;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 
-/** Admin reports and counters. */
+/** Sales and occupancy reports (admin, or a theatre owner for their cinemas) and counters. */
 public final class AdminReports {
 
     /** {@code revenue} is what was paid minus what was refunded, in paise. */
@@ -19,6 +22,7 @@ public final class AdminReports {
             String movieTitle,
             String cinemaName,
             Instant startsAt,
+            ShowStatus status,
             int capacity,
             int booked,
             double occupancyPercent,
@@ -38,23 +42,44 @@ public final class AdminReports {
     }
 
     public Page<ShowReport> shows(String cityId, Instant from, Instant to, int page, int size) {
+        return shows(CinemaScope.everything(), cityId, from, to, page, size);
+    }
+
+    public Page<ShowReport> shows(
+            CinemaScope scope, String cityId, Instant from, Instant to, int page, int size) {
         return uow.inTransaction(
                 r ->
                         r.reports()
-                                .showStats(cityId, null, from, to, page, size)
+                                .showStats(cityId, scope.ownerId(), from, to, page, size)
                                 .map(AdminReports::report));
     }
 
     public ShowReportDetail show(long showId) {
+        return show(CinemaScope.everything(), showId);
+    }
+
+    public ShowReportDetail show(CinemaScope scope, long showId) {
         return uow.inTransaction(
-                r ->
-                        new ShowReportDetail(
-                                report(
-                                        r.reports()
-                                                .showStat(showId)
-                                                .orElseThrow(
-                                                        () -> DomainException.notFound("Show"))),
-                                r.reports().categoryStats(showId)));
+                r -> {
+                    Show show =
+                            r.shows()
+                                    .findById(showId)
+                                    .orElseThrow(() -> DomainException.notFound("Show"));
+                    scope.require(
+                            r,
+                            r.screens().findById(show.screenId()).orElseThrow().cinemaId(),
+                            "Show");
+                    return detail(r, showId);
+                });
+    }
+
+    private static ShowReportDetail detail(Repositories r, long showId) {
+        return new ShowReportDetail(
+                report(
+                        r.reports()
+                                .showStat(showId)
+                                .orElseThrow(() -> DomainException.notFound("Show"))),
+                r.reports().categoryStats(showId));
     }
 
     /** "Today" is the UTC day; the spec does not name a zone for this counter. */
@@ -78,6 +103,7 @@ public final class AdminReports {
                 s.movieTitle(),
                 s.cinemaName(),
                 s.startsAt(),
+                s.status(),
                 s.capacity(),
                 s.booked(),
                 occupancy,
