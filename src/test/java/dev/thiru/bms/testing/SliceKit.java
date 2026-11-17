@@ -74,6 +74,7 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
     private final SequentialIds ids = new SequentialIds();
     private final RecordingGateway gateway = new RecordingGateway();
     private final RecordingEvents events = new RecordingEvents();
+    private final RecordingCallbacks callbacks = new RecordingCallbacks();
     private final IdempotencyStore idempotency = IdempotencyStore.inMemory();
     private final FakeLive live;
     private final App app;
@@ -229,6 +230,11 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
     /** Records the seat events a slice publishes after commit. */
     public RecordingEvents events() {
         return events;
+    }
+
+    /** Records the mock gateway's webhook deliveries; answers 200 unless told otherwise. */
+    public RecordingCallbacks callbacks() {
+        return callbacks;
     }
 
     public App app() {
