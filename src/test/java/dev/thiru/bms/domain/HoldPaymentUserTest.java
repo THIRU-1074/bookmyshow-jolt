@@ -142,16 +142,16 @@ class HoldPaymentUserTest {
 
     @Test
     void userRules() {
-        User u = new User(1, "Ann@Example.COM", "hash", "Ann", Set.of(Role.USER), NOW);
+        User u = new User(1, "Ann@Example.COM", "hash", "Ann", Set.of(Role.AUDIENCE), NOW);
         assertEquals("ann@example.com", u.email());
         assertThrows(
                 DomainException.class,
-                () -> new User(1, "no-at", "hash", "Ann", Set.of(Role.USER), NOW));
+                () -> new User(1, "no-at", "hash", "Ann", Set.of(Role.AUDIENCE), NOW));
         assertThrows(
                 DomainException.class, () -> new User(1, "a@b.c", "hash", "Ann", Set.of(), NOW));
         assertThrows(
                 DomainException.class,
-                () -> new User(1, "a@b.c", "", "Ann", Set.of(Role.USER), NOW));
+                () -> new User(1, "a@b.c", "", "Ann", Set.of(Role.AUDIENCE), NOW));
         User.validatePassword("x".repeat(10));
         User.validatePassword("x".repeat(128));
         assertThrows(DomainException.class, () -> User.validatePassword("x".repeat(9)));

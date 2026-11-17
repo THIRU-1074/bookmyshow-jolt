@@ -15,7 +15,7 @@ record Principal(long userId, Set<Role> roles) {
     }
 
     boolean isUser() {
-        return roles.contains(Role.USER) || isAdmin();
+        return roles.contains(Role.AUDIENCE) || isAdmin();
     }
 
     static Principal of(Request req) {
@@ -42,6 +42,11 @@ record Principal(long userId, Set<Role> roles) {
     }
 
     private static void addRole(Set<Role> roles, Object raw) {
+        // Access tokens issued before V4 still say USER for up to 15 minutes after the deploy.
+        if ("USER".equals(raw.toString())) {
+            roles.add(Role.AUDIENCE);
+            return;
+        }
         try {
             roles.add(Role.valueOf(raw.toString()));
         } catch (IllegalArgumentException ignored) {

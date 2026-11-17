@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import in.jolt.db.Db;
 import in.jolt.db.DbException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -25,7 +28,7 @@ class SchemaTest {
         SchemaRunner.migrate(url);
         db = Sqlite.open(url);
         // Fixture ids start at 9000 so they never collide with seed rows.
-        db.update("INSERT INTO app_user VALUES (9000, 'u@example.test', 'x', 'U', 'USER', 0)");
+        db.update("INSERT INTO app_user VALUES (9000, 'u@example.test', 'x', 'U', 'AUDIENCE', 0)");
         db.update(
                 "INSERT INTO movie VALUES (9000, 'Fixture', 'U', 100, '2026-01-01', '/p.jpg', 'd')");
         db.update("INSERT INTO city VALUES ('fixture-city', 'Fixture City', 'Asia/Kolkata')");
@@ -139,12 +142,74 @@ class SchemaTest {
 
     @Test
     void strictTablesRejectWrongTypes() {
-        rejects("INSERT INTO app_user VALUES (9001, 'v@example.test', 'x', 'U', 'USER', 'later')");
+        rejects(
+                "INSERT INTO app_user VALUES (9001, 'v@example.test', 'x', 'U', 'AUDIENCE', 'later')");
+    }
+
+    @Test
+    void cinemaOwnerPairsAreUniqueAndReferenceRealRows() {
+        db.update("INSERT INTO cinema_owner VALUES (9000, 9000)");
+        rejects("INSERT INTO cinema_owner VALUES (9000, 9000)");
+        rejects("INSERT INTO cinema_owner VALUES (9999, 9000)");
+        rejects("INSERT INTO cinema_owner VALUES (9000, 9999)");
+        rejects("INSERT INTO cinema_owner VALUES ('x', 9000)");
+    }
+
+    @Test
+    void cinemaOwnerLinksAreIndexedByUserAndGoWithTheirCinema() {
+        assertEquals(
+                List.of("user_id"),
+                db.query(
+                        "SELECT name FROM pragma_index_info('cinema_owner_user')",
+                        r -> r.getString(1)));
+        db.update("INSERT INTO cinema_owner VALUES (9000, 9000)");
+        db.update("DELETE FROM seat_hold");
+        db.update("DELETE FROM show WHERE id = 9000");
+        db.update("DELETE FROM screen WHERE cinema_id = 9000");
+        db.update("DELETE FROM cinema WHERE id = 9000");
+        assertEquals(
+                0,
+                db.queryOne("SELECT count(*) FROM cinema_owner", r -> r.getInt(1)).orElseThrow());
+    }
+
+    @Test
+    void v4RewritesTheStoredUserRoleToAudience() throws IOException {
+        String script;
+        try (InputStream in = getClass().getResourceAsStream("/db/migrations/V4__roles.sql")) {
+            script = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        String rewrite =
+                SchemaRunner.split(script).stream()
+                        .filter(s -> s.startsWith("UPDATE app_user"))
+                        .findFirst()
+                        .orElseThrow();
+        db.update("INSERT INTO app_user VALUES (9001, 'a@example.test', 'x', 'A', 'USER', 0)");
+        db.update(
+                "INSERT INTO app_user VALUES (9002, 'b@example.test', 'x', 'B', 'ADMIN,USER', 0)");
+        db.update(
+                "INSERT INTO app_user VALUES (9003, 'c@example.test', 'x', 'C', 'USER,ADMIN', 0)");
+        db.update("UPDATE app_user SET roles = 'USER' WHERE id = 9000");
+        db.update(rewrite);
+        assertEquals(
+                List.of("AUDIENCE", "ADMIN,AUDIENCE", "AUDIENCE,ADMIN", "AUDIENCE"),
+                db.query(
+                        "SELECT roles FROM app_user WHERE id IN (9001, 9002, 9003, 9000)"
+                                + " ORDER BY CASE id WHEN 9000 THEN 1 ELSE 0 END, id",
+                        r -> r.getString(1)));
+        // Running it again changes nothing.
+        db.update(rewrite);
+        assertEquals(
+                0,
+                db.queryOne(
+                                "SELECT count(*) FROM app_user WHERE ',' || roles || ','"
+                                        + " LIKE '%,USER,%'",
+                                r -> r.getInt(1))
+                        .orElseThrow());
     }
 
     @Test
     void emailAndWebhookEventIdsAreUnique() {
-        rejects("INSERT INTO app_user VALUES (9001, 'u@example.test', 'x', 'U', 'USER', 0)");
+        rejects("INSERT INTO app_user VALUES (9001, 'u@example.test', 'x', 'U', 'AUDIENCE', 0)");
         db.update("INSERT INTO payment_event VALUES ('e1', 'p1', 'payment.succeeded', 0)");
         rejects("INSERT INTO payment_event VALUES ('e1', 'p1', 'payment.succeeded', 0)");
     }

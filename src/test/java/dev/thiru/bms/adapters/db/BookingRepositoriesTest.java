@@ -92,7 +92,7 @@ class BookingRepositoriesTest extends DbTest {
                                                         "Admin@Example.com",
                                                         "h",
                                                         "Ada",
-                                                        Set.of(Role.USER, Role.ADMIN),
+                                                        Set.of(Role.AUDIENCE, Role.ADMIN),
                                                         NOW)));
         assertTrue(saved.id() > 0);
         assertEquals("admin@example.com", saved.email());
@@ -113,7 +113,7 @@ class BookingRepositoriesTest extends DbTest {
                                                                         "admin@example.com",
                                                                         "h",
                                                                         "Dup",
-                                                                        Set.of(Role.USER),
+                                                                        Set.of(Role.AUDIENCE),
                                                                         NOW))));
         assertEquals(DomainException.Code.VALIDATION, dup.code());
         assertTrue(dup.errors().containsKey("email"));

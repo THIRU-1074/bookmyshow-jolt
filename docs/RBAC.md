@@ -7,8 +7,8 @@ Who may call which route, and how the server enforces it. The matrix below is ch
 | Role | How it is granted | Notes |
 |---|---|---|
 | Anonymous | no `Authorization` header | catalog, seat map, live seats, health |
-| `USER` | every account created by `POST /api/auth/register` | the request body can never choose roles; extra fields such as `roles` are ignored |
-| `ADMIN` | only the account named by `ADMIN_EMAIL`/`ADMIN_PASSWORD` at startup (it also holds `USER`) | there is no API that grants or changes roles |
+| `AUDIENCE` | every account created by `POST /api/auth/register` | the request body can never choose roles; extra fields such as `roles` are ignored |
+| `ADMIN` | only the account named by `ADMIN_EMAIL`/`ADMIN_PASSWORD` at startup (it also holds `AUDIENCE`) | there is no API that grants or changes roles |
 
 Roles travel in the access token's `roles` claim (HS256, `JWT_SECRET`, 15 minutes). They are read from the stored user each time a token is issued or refreshed, so a role change takes effect at the next refresh, at most 15 minutes later. Refresh tokens live only in the `bms_refresh` cookie (HttpOnly, SameSite=Strict, Path=/api/auth); reusing a rotated refresh token revokes its whole family.
 
@@ -27,7 +27,7 @@ Roles travel in the access token's `roles` claim (HS256, `JWT_SECRET`, 15 minute
 
 Cells: `yes` allowed; `no` refused (401 anonymous, 403 signed in); `own` only for the caller's own hold or booking (others get 404); `any` any user's resource; `proof` no JWT, authenticated by the refresh cookie or webhook signature instead.
 
-| Method | Path | Access | Anonymous | USER | ADMIN |
+| Method | Path | Access | Anonymous | AUDIENCE | ADMIN |
 |---|---|---|---|---|---|
 | POST | `/api/auth/register` | PUBLIC | yes | yes | yes |
 | POST | `/api/auth/login` | PUBLIC | yes | yes | yes |

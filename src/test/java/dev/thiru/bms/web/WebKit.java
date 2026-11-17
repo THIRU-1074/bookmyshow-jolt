@@ -83,7 +83,7 @@ final class WebKit {
         return "10.0.0." + (addresses.incrementAndGet() % 250 + 1);
     }
 
-    /** Registers a USER and returns its access token. */
+    /** Registers an AUDIENCE account and returns its access token. */
     String user(String email) {
         return (String)
                 http.post("/api/auth/register")
@@ -104,7 +104,7 @@ final class WebKit {
                                                 "admin@bms.test",
                                                 PlainHasher.PREFIX + PASSWORD,
                                                 "Admin",
-                                                Set.of(Role.ADMIN, Role.USER),
+                                                Set.of(Role.ADMIN, Role.AUDIENCE),
                                                 FakeWorld.T0)));
         return login("admin@bms.test");
     }

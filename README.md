@@ -56,7 +56,7 @@ src/main/resources/
 
 ## Security and RBAC
 
-Roles (`USER`, `ADMIN`), token handling, rate limits and the webhook trust model are described in [docs/RBAC.md](docs/RBAC.md).
+Roles (`AUDIENCE`, `THEATRE_OWNER`, `ADMIN`), token handling, rate limits and the webhook trust model are described in [docs/RBAC.md](docs/RBAC.md).
 
 ## License
 

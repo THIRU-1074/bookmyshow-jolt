@@ -52,7 +52,7 @@ abstract class DbTest {
                                                 email,
                                                 "hash",
                                                 "Test User",
-                                                Set.of(Role.USER),
+                                                Set.of(Role.AUDIENCE),
                                                 NOW)))
                 .id();
     }
