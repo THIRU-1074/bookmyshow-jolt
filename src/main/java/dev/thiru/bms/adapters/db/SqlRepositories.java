@@ -1,5 +1,6 @@
 package dev.thiru.bms.adapters.db;
 
+import dev.thiru.bms.domain.port.AdminRepositories;
 import dev.thiru.bms.domain.port.BookingRepositories;
 import dev.thiru.bms.domain.port.CatalogRepositories;
 import dev.thiru.bms.domain.port.Repositories;
@@ -68,5 +69,15 @@ final class SqlRepositories implements Repositories {
     @Override
     public BookingRepositories.PaymentEvents paymentEvents() {
         return new SqlBookings.PaymentEvents(sql);
+    }
+
+    @Override
+    public AdminRepositories.CatalogWrites catalogWrites() {
+        return new SqlAdmin.CatalogWrites(sql);
+    }
+
+    @Override
+    public AdminRepositories.Reports reports() {
+        return new SqlAdmin.Reports(sql);
     }
 }
