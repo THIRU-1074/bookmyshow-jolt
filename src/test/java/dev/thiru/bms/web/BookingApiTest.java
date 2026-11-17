@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.fakes.FakeWorld;
 import java.time.Duration;
 import java.util.List;
@@ -343,7 +342,7 @@ class BookingApiTest {
                 .expect(303)
                 .header("Location", "/bookings/" + booking);
         assertEquals(1, kit.sentWebhooks.size());
-        assertEquals(ProcessPaymentWebhook.Type.PAYMENT_SUCCEEDED, kit.sentWebhooks.get(0).type());
+        assertEquals("payment.succeeded", kit.sentWebhooks.get(0).type());
         assertEquals(15000, kit.sentWebhooks.get(0).amount());
 
         kit.http

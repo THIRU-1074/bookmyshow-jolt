@@ -4,6 +4,7 @@ import dev.thiru.bms.domain.port.UnitOfWork;
 import dev.thiru.bms.kernel.DomainException;
 import dev.thiru.bms.kernel.payment.Payment;
 import dev.thiru.bms.kernel.payment.PaymentStatus;
+import dev.thiru.bms.ports.GatewayCallback;
 import dev.thiru.bms.ports.Ids;
 import java.time.Clock;
 
@@ -15,8 +16,14 @@ public final class MockGatewayPayments {
 
     /** Delivers the event to the webhook endpoint and returns its HTTP status. */
     @FunctionalInterface
-    public interface Sender {
+    public interface Sender extends GatewayCallback {
         int send(ProcessPaymentWebhook.Event event) throws Exception;
+
+        /** Never called; only makes a lambda pick the legacy constructor over the bridge. */
+        @Override
+        default int send(GatewayCallback.Event event) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     public record Pending(
@@ -36,6 +43,29 @@ public final class MockGatewayPayments {
         this.sender = sender;
         this.ids = ids;
         this.clock = clock;
+    }
+
+    /** Step 0 bridge to {@code ports.GatewayCallback}; deleted with this class in wave 4. */
+    public MockGatewayPayments(UnitOfWork uow, GatewayCallback callback, Ids ids, Clock clock) {
+        this(
+                uow,
+                (Sender)
+                        e ->
+                                callback.send(
+                                        new GatewayCallback.Event(
+                                                e.eventId(),
+                                                e.type()
+                                                                == ProcessPaymentWebhook.Type
+                                                                        .PAYMENT_SUCCEEDED
+                                                        ? GatewayCallback.SUCCEEDED
+                                                        : GatewayCallback.FAILED,
+                                                e.paymentId(),
+                                                e.gatewayRef(),
+                                                e.amount(),
+                                                e.currency(),
+                                                e.occurredAt())),
+                ids,
+                clock);
     }
 
     public Pending find(String paymentId) {

@@ -1,10 +1,9 @@
 package dev.thiru.bms.adapters.payment;
 
-import dev.thiru.bms.application.MockGatewayPayments;
-import dev.thiru.bms.application.ProcessPaymentWebhook;
+import dev.thiru.bms.ports.GatewayCallback;
 
 /** Delivers the mock gateway's webhook through {@link MockGatewayClient} (signed, real HTTP). */
-public final class MockGatewaySender implements MockGatewayPayments.Sender {
+public final class MockGatewaySender implements GatewayCallback {
 
     private final MockGatewayClient client;
 
@@ -13,19 +12,14 @@ public final class MockGatewaySender implements MockGatewayPayments.Sender {
     }
 
     @Override
-    public int send(ProcessPaymentWebhook.Event event) throws Exception {
+    public int send(Event event) throws Exception {
         return client.post(toWire(event));
     }
 
-    static MockGatewayClient.Event toWire(ProcessPaymentWebhook.Event e) {
-        String type =
-                switch (e.type()) {
-                    case PAYMENT_SUCCEEDED -> "payment.succeeded";
-                    case PAYMENT_FAILED -> "payment.failed";
-                };
+    static MockGatewayClient.Event toWire(Event e) {
         return new MockGatewayClient.Event(
                 e.eventId(),
-                type,
+                e.type(),
                 e.paymentId(),
                 e.gatewayRef(),
                 e.amount(),

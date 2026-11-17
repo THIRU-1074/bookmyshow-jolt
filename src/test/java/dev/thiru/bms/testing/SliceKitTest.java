@@ -117,9 +117,11 @@ class SliceKitTest {
         assertEquals(
                 "http://pay.test/p1", kit.gateway().createSession("p1", 100, "INR").checkoutUrl());
         assertTrue(kit.events().published.isEmpty());
+        assertTrue(kit.callbacks().sent.isEmpty());
         try (SliceKit other = SliceKit.builder().boot()) {
             assertEquals("id-1", other.ids().newId());
             assertEquals(0, other.gateway().sessions.get());
+            assertTrue(other.callbacks() != kit.callbacks());
         }
     }
 }

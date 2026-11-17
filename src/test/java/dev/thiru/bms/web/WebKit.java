@@ -1,6 +1,5 @@
 package dev.thiru.bms.web;
 
-import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.fakes.FakeWorld;
 import dev.thiru.bms.domain.port.AdminRepositories;
 import dev.thiru.bms.domain.port.UnitOfWork;
@@ -12,6 +11,7 @@ import dev.thiru.bms.kernel.catalog.Movie;
 import dev.thiru.bms.kernel.catalog.Screen;
 import dev.thiru.bms.kernel.catalog.Show;
 import dev.thiru.bms.ports.Db;
+import dev.thiru.bms.ports.GatewayCallback;
 import dev.thiru.bms.testing.FakeLive;
 import dev.thiru.bms.testing.MemoryRefreshTokens;
 import dev.thiru.bms.testing.PlainHasher;
@@ -50,7 +50,7 @@ final class WebKit implements AutoCloseable, AfterEachCallback {
     static final long MOVIE_ID = 1;
 
     final FakeWorld world = FakeWorld.seeded();
-    final List<ProcessPaymentWebhook.Event> sentWebhooks = new CopyOnWriteArrayList<>();
+    final List<GatewayCallback.Event> sentWebhooks = new CopyOnWriteArrayList<>();
     final AtomicBoolean dbUp = new AtomicBoolean(true);
     final SliceKit slice;
     final UnitOfWork uow;
