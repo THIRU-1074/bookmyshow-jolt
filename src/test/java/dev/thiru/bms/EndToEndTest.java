@@ -63,6 +63,7 @@ class EndToEndTest {
         env.put("DB_URL", "jdbc:sqlite:" + dir.resolve("bms.db"));
         env.put("ADMIN_EMAIL", ADMIN_EMAIL);
         env.put("ADMIN_PASSWORD", ADMIN_PASSWORD);
+        env.put("STATIC_DIR", MainTest.STATIC_FIXTURE);
         AppConfig config = AppConfig.fromEnv(env);
         booted = Main.app(config, JoltConfig.defaults());
         booted.listen(config.port());

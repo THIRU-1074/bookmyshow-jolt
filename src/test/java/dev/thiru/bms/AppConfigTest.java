@@ -47,7 +47,7 @@ class AppConfigTest {
         assertTrue(c.mockGateway());
         assertNull(c.metricsToken());
         assertEquals(List.of(), c.trustProxy());
-        assertEquals(Path.of("src/main/resources/static"), c.staticDir());
+        assertEquals(Path.of("web/dist"), c.staticDir());
         assertEquals(Path.of("src/main/resources/views"), c.viewsDir());
         assertFalse(c.seedAdmin());
         assertFalse(c.joltDev());

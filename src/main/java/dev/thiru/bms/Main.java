@@ -251,9 +251,21 @@ public final class Main {
                     if (isBackendPath(req.path())) {
                         next.run();
                     } else {
+                        if ("GET".equals(req.method()) || "HEAD".equals(req.method())) {
+                            res.header("Cache-Control", cacheControl(req.path()));
+                        }
                         files.handle(req, res, next);
                     }
                 });
+    }
+
+    /**
+     * The UI build fingerprints everything under /assets/ (the file name changes with the content),
+     * so those are cached for a year. Everything else, index.html above all, is revalidated on each
+     * load so a deploy is picked up at once; ETag keeps that a cheap 304.
+     */
+    static String cacheControl(String path) {
+        return path.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache";
     }
 
     static boolean isBackendPath(String path) {

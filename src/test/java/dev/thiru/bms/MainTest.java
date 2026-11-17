@@ -17,6 +17,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 class MainTest {
 
+    /** The React build needs Node; tests serve this small stand-in so Maven runs without it. */
+    static final String STATIC_FIXTURE = "src/test/resources/static-fixture";
+
     @TempDir Path dir;
     private Main.Booted booted;
 
@@ -25,6 +28,7 @@ class MainTest {
         env.put("JWT_SECRET", AppConfigTest.JWT);
         env.put("WEBHOOK_SECRET", AppConfigTest.HOOK);
         env.put("DB_URL", "jdbc:sqlite:" + dir.resolve("nested/data/bms.db"));
+        env.put("STATIC_DIR", STATIC_FIXTURE);
         for (int i = 0; i < kv.length; i += 2) {
             env.put(kv[i], kv[i + 1]);
         }
@@ -61,12 +65,26 @@ class MainTest {
     @Test
     void rootAndClientRoutesServeIndexHtml() {
         JoltTest http = boot();
-        http.get("/").expect(200).bodyContains("<title>BookMyShow on Jolt</title>");
+        http.get("/").expect(200).bodyContains("<title>Houselights</title>");
         http.get("/movies/1")
                 .header("Accept", "text/html")
                 .expect(200)
-                .bodyContains("<title>BookMyShow on Jolt</title>");
+                .bodyContains("<title>Houselights</title>");
         http.get("/css/app.css").expect(200);
+    }
+
+    @Test
+    void hashedAssetsAreImmutableAndTheShellIsRevalidated() {
+        JoltTest http = boot();
+        http.get("/assets/index-test.js")
+                .expect(200)
+                .header("Cache-Control", "public, max-age=31536000, immutable");
+        http.get("/").expect(200).header("Cache-Control", "no-cache");
+        http.get("/owner")
+                .header("Accept", "text/html")
+                .expect(200)
+                .header("Cache-Control", "no-cache");
+        http.get("/css/app.css").expect(200).header("Cache-Control", "no-cache");
     }
 
     @Test

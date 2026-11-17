@@ -38,7 +38,7 @@ public record AppConfig(
     static final int MIN_ADMIN_PASSWORD = 12;
     static final int MAX_CHECKOUTS = 3;
     static final String DEFAULT_DB_URL = "jdbc:sqlite:data/bms.db";
-    static final String DEFAULT_STATIC_DIR = "src/main/resources/static";
+    static final String DEFAULT_STATIC_DIR = "web/dist";
     static final String DEFAULT_VIEWS_DIR = "src/main/resources/views";
     private static final String SQLITE_PREFIX = "jdbc:sqlite:";
 
