@@ -16,6 +16,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -23,7 +24,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 /**
  * SPEC section 13: 200 virtual-thread buyers race for overlapping seats through the slice's use
  * cases and the real {@code SqliteDb} (BEGIN IMMEDIATE). The {@code seat_lock} primary key must
- * keep every seat single-owned. Ported from {@code adapters.db.ConcurrentBuyersTest}.
+ * keep every seat single-owned while the expiry sweep runs alongside. Ported from {@code
+ * adapters.db.ConcurrentBuyersTest}.
  */
 class ConcurrentBuyersTest {
 
@@ -52,7 +54,21 @@ class ConcurrentBuyersTest {
         AtomicInteger held = new AtomicInteger();
         AtomicInteger rejected = new AtomicInteger();
         AtomicInteger booked = new AtomicInteger();
+        AtomicInteger sweeps = new AtomicInteger();
+        AtomicBoolean racing = new AtomicBoolean(true);
         try (ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor()) {
+            // The sweeper runs alongside the buyers, as the scheduled sweep does in production.
+            // Nothing has expired yet, so it must take the writer lock and change nothing.
+            Future<?> sweeper =
+                    threads.submit(
+                            () -> {
+                                start.await();
+                                while (racing.get()) {
+                                    assertEquals(new ExpireSweep.Result(0, 0), w.sweep.run());
+                                    sweeps.incrementAndGet();
+                                }
+                                return null;
+                            });
             List<Future<?>> done = new ArrayList<>();
             for (int i = 0; i < BUYERS; i++) {
                 long user = users.get(i);
@@ -92,7 +108,10 @@ class ConcurrentBuyersTest {
             for (Future<?> f : done) {
                 f.get();
             }
+            racing.set(false);
+            sweeper.get();
         }
+        assertTrue(sweeps.get() > 0, "the sweep ran during the race");
         assertEquals(BUYERS, held.get() + rejected.get());
         assertTrue(held.get() > 0 && rejected.get() > 0, "the race must have winners and losers");
 
