@@ -88,6 +88,7 @@ final class WebKit implements AutoCloseable, AfterEachCallback {
     private WebDeps deps(SliceKit k, boolean mockGateway, Duration heartbeat) {
         return new WebDeps(
                 k.testDb().legacyUnitOfWork(),
+                k.db(),
                 world.clock,
                 world.policy,
                 world,

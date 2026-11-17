@@ -3,6 +3,7 @@ package dev.thiru.bms.web;
 import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.domain.port.UnitOfWork;
 import dev.thiru.bms.kernel.booking.BookingPolicy;
+import dev.thiru.bms.ports.Db;
 import dev.thiru.bms.ports.Ids;
 import dev.thiru.bms.ports.LiveSeats;
 import dev.thiru.bms.ports.PasswordHasher;
@@ -19,7 +20,8 @@ import java.util.function.BooleanSupplier;
  * Everything {@link WebModules#install} needs from the composition root. The web layer names only
  * ports and functional interfaces; Main supplies the adapters behind them.
  *
- * @param uow transactional boundary over the repositories
+ * @param uow transactional boundary over the legacy repositories (deleted in wave 6)
+ * @param db the transaction seam feature slices run their SQL through
  * @param ids random ids and the booking-code random source
  * @param hasher password hashing (Jolt's PBKDF2 in production)
  * @param refreshTokens durable refresh-token hashes
@@ -33,6 +35,7 @@ import java.util.function.BooleanSupplier;
  */
 public record WebDeps(
         UnitOfWork uow,
+        Db db,
         Clock clock,
         BookingPolicy policy,
         Ids ids,

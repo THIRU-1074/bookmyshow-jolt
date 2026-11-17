@@ -5,6 +5,7 @@ import dev.thiru.bms.adapters.db.SchemaRunner;
 import dev.thiru.bms.adapters.db.SqlIdempotency;
 import dev.thiru.bms.adapters.db.SqlRefreshTokens;
 import dev.thiru.bms.adapters.db.Sqlite;
+import dev.thiru.bms.adapters.db.SqliteDb;
 import dev.thiru.bms.adapters.db.SqliteUnitOfWork;
 import dev.thiru.bms.adapters.ids.SecureIds;
 import dev.thiru.bms.adapters.live.LiveSeatHub;
@@ -131,6 +132,8 @@ public final class Main {
         Db db = Sqlite.open(url, DB_POOL, Duration.ofSeconds(10));
         try {
             SqliteUnitOfWork uow = new SqliteUnitOfWork(db);
+            // The same pool behind ports.Db for the feature slices; one BEGIN IMMEDIATE per call.
+            SqliteDb sliceDb = new SqliteDb(db);
             Pbkdf2PasswordHasher hasher = new Pbkdf2PasswordHasher();
             if (config.seedAdmin()) {
                 boolean created =
@@ -149,6 +152,7 @@ public final class Main {
             WebDeps deps =
                     new WebDeps(
                             uow,
+                            sliceDb,
                             clock,
                             config.policy(),
                             new SecureIds(),
