@@ -1,8 +1,10 @@
 # Jolt gaps
 
-Every Jolt limitation the app hits. Each interim workaround carries `TODO(jolt#N)` at its location and is deleted when the fix ships in a Jolt release; then the row is marked done with the closing PR and the release.
+Every Jolt limitation the app hits. Each interim workaround carries `TODO(jolt#N)` at its location and is deleted when the fix ships in a Jolt release; then the row is marked done with the release.
 
 Status: `open` (no fix released), `in progress` (fix branch exists), `released vX` (bump `jolt.version` and remove the workaround), `done` (workaround removed).
+
+The app runs on Jolt v0.4.1, which closes every row below. Gaps found during that upgrade are listed at the end as A to G; they are not filed yet, so their workarounds point to this file instead of carrying a `TODO(jolt#N)`.
 
 | Gap | Jolt issue | Workaround location | Status |
 |---|---|---|---|
@@ -28,7 +30,7 @@ Status: `open` (no fix released), `in progress` (fix branch exists), `released v
 
 ## Where each workaround lives
 
-Found with `grep -rn "TODO(jolt#" src`. After the v0.4.1 upgrade no marker is left; the remaining workarounds are listed under the new gaps below, and SchemaRunner is kept on purpose.
+Found with `grep -rn "TODO(jolt#" src`. After the v0.4.1 upgrade the only marker left is in `V3__idempotency.sql`: applied migrations are checksummed and must not change, so its comment stays and V5 replaces the table. The remaining workarounds are listed under the new gaps below, and SchemaRunner is kept on purpose.
 
 | Jolt issue | File holding the workaround |
 |---|---|

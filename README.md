@@ -2,7 +2,7 @@
 
 A movie ticketing app (cities, movies, shows, seat holds, payments, tickets) built on [Jolt](https://github.com/THIRU-1074/custom-Http-Server), an Express-style Java HTTP framework. It is Jolt's reference app: every framework gap it hits becomes a Jolt issue, gets fixed upstream, and is listed in [docs/JOLT_GAPS.md](docs/JOLT_GAPS.md).
 
-Status: integrated. All lanes are merged and wired in `Main`; an end-to-end test books a seat through the mock gateway on a real socket. The contract is [docs/SPEC.md](docs/SPEC.md). Fixes for Jolt gaps #52 to #54 are closed upstream and wait for Jolt v0.4.0.
+Status: integrated on Jolt v0.4.1. All lanes are merged and wired in `Main`; an end-to-end test books a seat through the mock gateway on a real socket. The contract is [docs/SPEC.md](docs/SPEC.md). Every Jolt gap from #52 to #77 is fixed upstream and the app now uses the Jolt API for it; [docs/JOLT_GAPS.md](docs/JOLT_GAPS.md) says how each was replaced and lists what is still worked around.
 
 ## Run
 
@@ -16,7 +16,9 @@ JWT_SECRET=$(openssl rand -hex 32) WEBHOOK_SECRET=$(openssl rand -hex 32) \
 curl http://127.0.0.1:8080/api/health
 ```
 
-`JWT_SECRET` and `WEBHOOK_SECRET` (at least 32 bytes each) are required; startup fails fast without them. The server binds to loopback on `PORT` (default 8080). Set `JOLT_BIND_ADDRESS=0.0.0.0` to expose it. The full environment variable table is in [SPEC section 9](docs/SPEC.md#9-non-functional). Until Jolt serves from the classpath (jolt#68), `STATIC_DIR` and `VIEWS_DIR` default to the source tree, so run from the repository root.
+`JWT_SECRET` and `WEBHOOK_SECRET` (at least 32 bytes each) are required; startup fails fast without them. The server binds to loopback on `PORT` (default 8080). Set `JOLT_BIND_ADDRESS=0.0.0.0` to expose it. The full environment variable table is in [SPEC section 9](docs/SPEC.md#9-non-functional); settings are read with Jolt's `Config.load()`, so an `application.properties` in the working directory or on the class path can supply them too (the environment wins). The UI and the server-rendered views are served from the class path, so the app runs from any directory; set `STATIC_DIR` or `VIEWS_DIR` to serve a directory instead.
+
+With `METRICS_TOKEN` set, `/_jolt/health` reports the database check and `/_jolt/metrics` (behind `Authorization: Bearer <METRICS_TOKEN>`) adds live SSE streams, catalog cache hits and the expiry sweep runs to Jolt's own series.
 
 ### Docker
 
@@ -41,8 +43,8 @@ src/main/java/dev/thiru/bms/
   adapters/db/       SQLite repositories, refresh-token and idempotency stores on jolt-db
   adapters/auth/     PBKDF2 password hashing on jolt-auth
   adapters/ids/      random UUIDv4 ids
-  adapters/payment/  mock gateway and webhook signing
-  adapters/live/     seat event fan-out for SSE
+  adapters/payment/  mock gateway and its webhook signer (Jolt verifies)
+  adapters/live/     seat event fan-out for SSE on Jolt's Hub
   web/               route modules, HTTP records, error mappers
   AppConfig.java     environment settings (SPEC section 9)
   Main.java          composition root
