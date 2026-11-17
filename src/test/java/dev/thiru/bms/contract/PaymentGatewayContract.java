@@ -12,12 +12,24 @@ import java.net.URI;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** The outbound gateway as the booking (checkout, cancel) and admin (show cancel) slices use it. */
+/**
+ * The outbound gateway as checkout, cancel, the webhook's late-success refund and show cancel (the
+ * booking, payments and admin slices) use it. Each of those calls the gateway inside its
+ * transaction and relies on a failed refund throwing, so that the transaction rolls back and
+ * nothing claims money was returned.
+ */
 public abstract class PaymentGatewayContract {
 
     private PaymentGateway gateway;
 
     protected abstract PaymentGateway newGateway();
+
+    /**
+     * Makes the next refund on {@code gateway} fail and returns the amount to ask for. A gateway
+     * with an outage switch flips it and returns a valid amount; one without (the mock refunds
+     * every valid amount, SPEC 4) returns an amount it rejects.
+     */
+    protected abstract long failNextRefund(PaymentGateway gateway);
 
     @BeforeEach
     protected void create() {
@@ -52,5 +64,12 @@ public abstract class PaymentGatewayContract {
     protected void aNegativeRefundIsRejected() {
         String ref = gateway.createSession("pay-9", 30000, "INR").gatewayRef();
         assertThrows(IllegalArgumentException.class, () -> gateway.refund(ref, -1));
+    }
+
+    @Test
+    protected void aFailedRefundThrowsSoTheCallersTransactionRollsBack() {
+        String ref = gateway.createSession("pay-9", 30000, "INR").gatewayRef();
+        long amount = failNextRefund(gateway);
+        assertThrows(RuntimeException.class, () -> gateway.refund(ref, amount));
     }
 }

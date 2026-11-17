@@ -10,4 +10,10 @@ class FakeWorldPaymentGatewayContractTest extends PaymentGatewayContract {
     protected PaymentGateway newGateway() {
         return new FakeWorld();
     }
+
+    @Override
+    protected long failNextRefund(PaymentGateway gateway) {
+        ((FakeWorld) gateway).failRefunds = true;
+        return 15000;
+    }
 }
