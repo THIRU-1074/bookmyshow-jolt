@@ -6,13 +6,14 @@ import dev.thiru.bms.application.AdminReports;
 import dev.thiru.bms.application.BookingQueries;
 import dev.thiru.bms.application.CancelBooking;
 import dev.thiru.bms.application.CancelShow;
-import dev.thiru.bms.application.CatalogQueries;
 import dev.thiru.bms.application.Checkout;
 import dev.thiru.bms.application.CreateBooking;
 import dev.thiru.bms.application.CreateHold;
 import dev.thiru.bms.application.MockGatewayPayments;
 import dev.thiru.bms.application.ProcessPaymentWebhook;
 import dev.thiru.bms.application.UserAdmin;
+import dev.thiru.bms.features.catalog.CatalogRoutes;
+import dev.thiru.bms.features.live.LiveRoutes;
 import dev.thiru.bms.kernel.account.Role;
 import dev.thiru.bms.kernel.account.User;
 import in.jolt.App;
@@ -74,14 +75,19 @@ public final class WebModules {
                         // Re-read on every issue and refresh: a demotion or deletion is picked up
                         // the next time the access token is renewed.
                         .claims(subject -> claimsFor(accounts, subject));
-        CatalogQueries catalog = new CatalogQueries(deps.uow(), deps.clock(), deps.policy());
         BookingQueries bookings = new BookingQueries(deps.uow());
 
         pipeline.module(new AuthModule(accounts, tokens));
-        pipeline.module(new CatalogModule(catalog, pipeline.catalogCache()));
         pipeline.module(
-                new LiveModule(
-                        catalog, deps.live(), deps.clock(), settings.sseHeartbeat(), mapper));
+                new CatalogRoutes(deps.db(), deps.clock(), deps.policy(), pipeline.catalogCache()));
+        pipeline.module(
+                new LiveRoutes(
+                        deps.db(),
+                        deps.live(),
+                        deps.clock(),
+                        deps.policy(),
+                        settings.sseHeartbeat(),
+                        mapper));
         pipeline.module(
                 new BookingModule(
                         new CreateHold(

@@ -3,7 +3,6 @@ package dev.thiru.bms.web;
 import dev.thiru.bms.application.AdminCatalog;
 import dev.thiru.bms.application.AdminReports;
 import dev.thiru.bms.application.BookingQueries;
-import dev.thiru.bms.application.CatalogQueries;
 import dev.thiru.bms.application.UserAdmin;
 import dev.thiru.bms.domain.port.AdminRepositories;
 import dev.thiru.bms.kernel.account.User;
@@ -49,28 +48,6 @@ final class Dtos {
         }
     }
 
-    record MovieSummary(
-            long id,
-            String title,
-            List<String> languages,
-            List<String> genres,
-            String certificate,
-            int durationMinutes,
-            LocalDate releaseDate,
-            String posterUrl) {
-        static MovieSummary of(Movie m) {
-            return new MovieSummary(
-                    m.id(),
-                    m.title(),
-                    m.languages(),
-                    m.genres(),
-                    m.certificate().name(),
-                    m.durationMinutes(),
-                    m.releaseDate(),
-                    m.posterUrl());
-        }
-    }
-
     record MovieDetail(
             long id,
             String title,
@@ -98,145 +75,6 @@ final class Dtos {
     record CinemaDto(long id, String cityId, String name, String address) {
         static CinemaDto of(Cinema c) {
             return new CinemaDto(c.id(), c.cityId(), c.name(), c.address());
-        }
-    }
-
-    record ScreenSummary(long id, String name, int capacity) {}
-
-    record CinemaDetailDto(
-            long id, String cityId, String name, String address, List<ScreenSummary> screens) {
-        static CinemaDetailDto of(CatalogQueries.CinemaDetail d) {
-            Cinema c = d.cinema();
-            return new CinemaDetailDto(
-                    c.id(),
-                    c.cityId(),
-                    c.name(),
-                    c.address(),
-                    d.screens().stream()
-                            .map(s -> new ScreenSummary(s.id(), s.name(), s.capacity()))
-                            .toList());
-        }
-    }
-
-    record SlotDto(
-            long id,
-            Instant startsAt,
-            LocalTime localTime,
-            String language,
-            String format,
-            long minPrice,
-            String availability) {}
-
-    record CinemaShowsDto(long id, String name, String address, List<SlotDto> shows) {}
-
-    record ShowTimesDto(LocalDate date, List<CinemaShowsDto> cinemas) {
-        static ShowTimesDto of(CatalogQueries.ShowTimes t) {
-            return new ShowTimesDto(
-                    t.date(),
-                    t.cinemas().stream()
-                            .map(
-                                    c ->
-                                            new CinemaShowsDto(
-                                                    c.cinema().id(),
-                                                    c.cinema().name(),
-                                                    c.cinema().address(),
-                                                    c.shows().stream()
-                                                            .map(
-                                                                    s ->
-                                                                            new SlotDto(
-                                                                                    s.show().id(),
-                                                                                    s.show()
-                                                                                            .startsAt(),
-                                                                                    s.localTime(),
-                                                                                    s.show()
-                                                                                            .language(),
-                                                                                    s.show()
-                                                                                            .format()
-                                                                                            .label(),
-                                                                                    s.minPrice(),
-                                                                                    s.availability()
-                                                                                            .name()))
-                                                            .toList()))
-                            .toList());
-        }
-    }
-
-    record MovieRef(long id, String title, String certificate, int durationMinutes) {}
-
-    record NamedRef(long id, String name) {}
-
-    record PriceDto(String category, String name, long amount) {}
-
-    record ShowDetailDto(
-            long id,
-            MovieRef movie,
-            NamedRef cinema,
-            NamedRef screen,
-            Instant startsAt,
-            LocalTime localTime,
-            String language,
-            String format,
-            List<PriceDto> prices,
-            String status) {
-        static ShowDetailDto of(CatalogQueries.ShowDetail d) {
-            Show s = d.show();
-            return new ShowDetailDto(
-                    s.id(),
-                    new MovieRef(
-                            d.movie().id(),
-                            d.movie().title(),
-                            d.movie().certificate().name(),
-                            d.movie().durationMinutes()),
-                    new NamedRef(d.cinema().id(), d.cinema().name()),
-                    new NamedRef(d.screen().id(), d.screen().name()),
-                    s.startsAt(),
-                    d.localTime(),
-                    s.language(),
-                    s.format().label(),
-                    d.prices().stream()
-                            .map(p -> new PriceDto(p.category(), p.name(), p.amount()))
-                            .toList(),
-                    s.status().name());
-        }
-    }
-
-    // ---- seats ----
-
-    record SeatDto(String id, int number, String category, String status) {}
-
-    record SeatRowDto(String row, List<SeatDto> seats, List<Integer> aisleAfter) {}
-
-    record SeatMapDto(
-            long showId,
-            long version,
-            List<PriceDto> categories,
-            List<SeatRowDto> rows,
-            long holdTtlSeconds) {
-        static SeatMapDto of(CatalogQueries.SeatMap m) {
-            return new SeatMapDto(
-                    m.showId(),
-                    m.version(),
-                    m.categories().stream()
-                            .map(p -> new PriceDto(p.category(), p.name(), p.amount()))
-                            .toList(),
-                    m.rows().stream()
-                            .map(
-                                    r ->
-                                            new SeatRowDto(
-                                                    r.row(),
-                                                    r.seats().stream()
-                                                            .map(
-                                                                    c ->
-                                                                            new SeatDto(
-                                                                                    c.id().toString(),
-                                                                                    c.number(),
-                                                                                    c.category(),
-                                                                                    c.status()
-                                                                                            .name()))
-                                                            .toList(),
-                                                    r.aisleAfter()))
-                            .toList(),
-                    m.holdTtlSeconds());
         }
     }
 

@@ -54,21 +54,8 @@ class RecordGeneratorTest {
             {"AuthResponse", "AuthResponse"},
             {"TokenResponse", "TokenResponse"},
             {"City", "CityDto"},
-            {"MovieSummary", "MovieSummary"},
             {"MovieDetail", "MovieDetail"},
             {"Cinema", "CinemaDto"},
-            {"ScreenSummary", "ScreenSummary"},
-            {"CinemaDetail", "CinemaDetailDto"},
-            {"Slot", "SlotDto"},
-            {"CinemaShows", "CinemaShowsDto"},
-            {"ShowTimes", "ShowTimesDto"},
-            {"MovieRef", "MovieRef"},
-            {"NamedRef", "NamedRef"},
-            {"Price", "PriceDto"},
-            {"ShowDetail", "ShowDetailDto"},
-            {"Seat", "SeatDto"},
-            {"SeatRow", "SeatRowDto"},
-            {"SeatMap", "SeatMapDto"},
             {"Hold", "HoldDto"},
             {"ShowInfo", "ShowInfoDto"},
             {"BookingSeat", "BookingSeatDto"},
@@ -88,6 +75,25 @@ class RecordGeneratorTest {
         };
         for (String[] d : dtos) {
             add(m, d[0], WEB + "Dtos$" + d[1]);
+        }
+        String catalog = "dev.thiru.bms.features.catalog.CatalogDtos$";
+        String live = "dev.thiru.bms.features.live.LiveDtos$";
+        add(m, "City", catalog + "CityDto");
+        add(m, "Cinema", catalog + "CinemaDto");
+        add(m, "MovieDetail", catalog + "MovieDetail");
+        add(m, "MovieSummary", catalog + "MovieSummary");
+        add(m, "ScreenSummary", catalog + "ScreenSummary");
+        add(m, "CinemaDetail", catalog + "CinemaDetailDto");
+        add(m, "Slot", catalog + "SlotDto");
+        add(m, "CinemaShows", catalog + "CinemaShowsDto");
+        add(m, "ShowTimes", catalog + "ShowTimesDto");
+        add(m, "MovieRef", catalog + "MovieRef");
+        add(m, "NamedRef", catalog + "NamedRef");
+        add(m, "ShowDetail", catalog + "ShowDetailDto");
+        for (String r : List.of("PriceDto", "SeatDto", "SeatRowDto", "SeatMapDto")) {
+            String schema = r.substring(0, r.length() - "Dto".length());
+            add(m, schema, catalog + r);
+            add(m, schema, live + r);
         }
         add(m, "RegisterRequest", WEB + "AuthModule$RegisterRequest");
         add(m, "LoginRequest", WEB + "AuthModule$LoginRequest");

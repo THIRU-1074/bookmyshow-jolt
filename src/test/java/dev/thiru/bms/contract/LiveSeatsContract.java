@@ -18,9 +18,9 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * The SSE side of the live seat stream as LiveModule and the admin stats use it, including the SPEC
- * 7 event names and payloads and the increasing event ids the {@code id:} lines carry. Subclasses
- * build a store capped at {@link #CAP} streams and say how a domain event reaches it.
+ * The SSE side of the live seat stream as the live slice and the admin stats use it, including the
+ * SPEC 7 event names and payloads and the increasing event ids the {@code id:} lines carry.
+ * Subclasses build a store capped at {@link #CAP} streams and say how a domain event reaches it.
  */
 public abstract class LiveSeatsContract {
 
