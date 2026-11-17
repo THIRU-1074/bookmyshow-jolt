@@ -12,9 +12,8 @@ import java.util.function.Supplier;
 
 /**
  * {@link Db} on Jolt's {@code Db.inTransaction(TxMode.IMMEDIATE, ...)}: a writer takes the SQLite
- * lock up front instead of failing later on lock upgrade (SPEC 5.2), the same semantics as {@code
- * SqliteUnitOfWork}. After-commit actions are collected per attempt and run once the commit has
- * returned.
+ * lock up front instead of failing later on lock upgrade (SPEC 5.2). After-commit actions are
+ * collected per attempt and run once the commit has returned.
  */
 public final class SqliteDb implements Db {
 

@@ -153,6 +153,40 @@ class TargetArchitectureTest {
                 fixture("non-main-names-adapter"));
     }
 
+    private static final Path FEATURE_TESTS = Path.of("src/test/java/dev/thiru/bms/features");
+
+    @Test
+    void everySliceClassThatRunsSqlIsTestedOnSqlite() {
+        assertEquals(
+                List.of(),
+                TargetLayout.sqlWithoutSqliteTests(SOURCES.resolve("features"), FEATURE_TESTS));
+    }
+
+    @Test
+    void sqlTestedOnlyOnAFakeIsCaught(@TempDir Path root) throws IOException {
+        Path main = root.resolve("main");
+        Path test = root.resolve("test");
+        write(
+                main.resolve("catalog/CatalogWrites.java"),
+                "class CatalogWrites { void save() { db.inTransaction(tx -> 1); } }");
+        write(main.resolve("catalog/Pure.java"), "class Pure { /* inTransaction( */ }");
+        write(
+                main.resolve("booking/Holds.java"),
+                "class Holds { void hold() { db.inTransaction(tx -> 1); } }");
+        write(
+                test.resolve("catalog/CatalogWritesTest.java"),
+                "class CatalogWritesTest { CatalogWrites w = new CatalogWrites(fakeWorld); }");
+        write(test.resolve("booking/World.java"), "class World { TestDb db = TestDb.open(dir); }");
+        write(test.resolve("booking/HoldsTest.java"), "class HoldsTest { World w; Holds h; }");
+        assertEquals(
+                List.of("catalog/CatalogWrites"), TargetLayout.sqlWithoutSqliteTests(main, test));
+    }
+
+    private static void write(Path file, String src) throws IOException {
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, src);
+    }
+
     @Test
     void commentsAndStringsAreNotDependencies() {
         String src =

@@ -59,23 +59,6 @@ class ArchitectureTest {
                                 "import " + APP + "features.")));
     }
 
-    /** The repository ports left in {@code domain.port} until wave 6 deletes them. */
-    @Test
-    void legacyRepositoryPortsImportOnlyTheKernelPortsAndTheJdk() {
-        assertEquals(
-                List.of(),
-                violations(
-                        "domain",
-                        List.of(
-                                "import in.jolt.",
-                                "import java.sql.",
-                                "import javax.sql.",
-                                "import " + APP + "application.",
-                                "import " + APP + "adapters.",
-                                "import " + APP + "web.",
-                                "import " + APP + "features.")));
-    }
-
     @Test
     void applicationNeverImportsAdaptersWebOrInfrastructure() {
         assertEquals(

@@ -3,8 +3,6 @@ package dev.thiru.bms.testing;
 import dev.thiru.bms.adapters.db.SchemaRunner;
 import dev.thiru.bms.adapters.db.Sqlite;
 import dev.thiru.bms.adapters.db.SqliteDb;
-import dev.thiru.bms.adapters.db.SqliteUnitOfWork;
-import dev.thiru.bms.domain.port.UnitOfWork;
 import dev.thiru.bms.ports.Db;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -73,14 +71,6 @@ public final class TestDb implements AutoCloseable {
 
     public Db db() {
         return db;
-    }
-
-    /**
-     * The legacy repositories over the same database, for the web layer's route modules until the
-     * slices replace them (deleted in wave 6). Slice code never uses it.
-     */
-    public UnitOfWork legacyUnitOfWork() {
-        return new SqliteUnitOfWork(jolt);
     }
 
     @Override

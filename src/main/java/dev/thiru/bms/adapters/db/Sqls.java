@@ -4,15 +4,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 
-/** Small helpers shared by the repositories. */
+/** Small helpers shared by the SQLite adapters. */
 final class Sqls {
 
     private Sqls() {}
-
-    /** {@code ?,?,?} with {@code n} markers, for IN lists. */
-    static String marks(int n) {
-        return "?" + ",?".repeat(Math.max(0, n - 1));
-    }
 
     static long ms(Instant t) {
         return t.toEpochMilli();

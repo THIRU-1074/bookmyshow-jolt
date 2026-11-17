@@ -49,17 +49,17 @@ class SqliteTest {
     }
 
     @Test
-    void unitOfWorkTransactionsBeginImmediate() throws Exception {
+    void sliceTransactionsBeginImmediate() throws Exception {
         String url = Sqlite.jdbcUrl(dir.resolve("c.db"));
         try (Db db = Sqlite.open(url);
                 Connection other = Sqlite.connect(url)) {
             db.update("CREATE TABLE t (id INTEGER PRIMARY KEY) STRICT");
-            new SqliteUnitOfWork(db)
+            new SqliteDb(db)
                     .inTransaction(
-                            r -> {
+                            tx -> {
                                 // With IMMEDIATE the write lock is taken at BEGIN, so before any
-                                // statement
-                                // a second writer is blocked and fails once its timeout expires.
+                                // statement a second writer is blocked and fails once its timeout
+                                // expires.
                                 try (Statement st = other.createStatement()) {
                                     st.execute("PRAGMA busy_timeout = 50");
                                     st.executeUpdate("INSERT INTO t VALUES (1)");
