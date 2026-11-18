@@ -101,6 +101,18 @@ class SqlIdempotencyTest extends DbTest {
         assertEquals(State.IN_FLIGHT, store.begin(new Key("u:1", "new"), "f").state());
     }
 
+    @Test
+    void aClaimOlderThanTheLeaseIsReclaimedByTheSameRequestOnly() {
+        store.begin(K, "f");
+        clock.set(NOW.plus(SqlIdempotency.LEASE).minusMillis(1));
+        assertEquals(State.IN_FLIGHT, store.begin(K, "f").state());
+        clock.set(NOW.plus(SqlIdempotency.LEASE).plusMillis(1));
+        assertEquals(State.MISMATCH, store.begin(K, "g").state());
+        assertEquals(State.STARTED, store.begin(K, "f").state());
+        // The reclaim restarted the lease, so the new owner is in flight, not reclaimable at once.
+        assertEquals(State.IN_FLIGHT, store.begin(K, "f").state());
+    }
+
     private static final class MutableClock extends Clock {
         private volatile Instant now;
 

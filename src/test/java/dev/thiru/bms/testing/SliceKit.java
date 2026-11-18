@@ -1,5 +1,6 @@
 package dev.thiru.bms.testing;
 
+import dev.thiru.bms.adapters.db.SqlIdempotency;
 import dev.thiru.bms.kernel.account.Role;
 import dev.thiru.bms.kernel.booking.BookingPolicy;
 import dev.thiru.bms.ports.Db;
@@ -75,7 +76,7 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
     private final RecordingGateway gateway = new RecordingGateway();
     private final RecordingEvents events = new RecordingEvents();
     private final RecordingCallbacks callbacks = new RecordingCallbacks();
-    private final IdempotencyStore idempotency = IdempotencyStore.inMemory();
+    private final IdempotencyStore idempotency;
     private final FakeLive live;
     private final App app;
     private final HttpPipeline pipeline;
@@ -95,6 +96,10 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
                             ? b.clock
                             : new MutableClock(
                                     seedDate.atTime(LocalTime.of(8, 0)).atZone(IST).toInstant());
+            this.idempotency =
+                    b.sqlIdempotency
+                            ? new SqlIdempotency(testDb.joltDb(), clock)
+                            : IdempotencyStore.inMemory();
             this.live = new FakeLive(b.liveStreams);
             this.app = Jolt.create(JoltConfig.defaults().problemJson(true));
             this.pipeline =
@@ -128,6 +133,7 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
         private boolean mockGateway;
         private Path viewsDir = Path.of("src/main/resources/views");
         private int liveStreams = 5;
+        private boolean sqlIdempotency;
         private final List<Consumer<SliceKit>> mounts = new ArrayList<>();
 
         private Builder() {}
@@ -152,6 +158,12 @@ public final class SliceKit implements AutoCloseable, AfterEachCallback {
 
         public Builder viewsDir(Path viewsDir) {
             this.viewsDir = viewsDir;
+            return this;
+        }
+
+        /** Keep Idempotency-Key claims in the production SQL store; default: Jolt's in-memory. */
+        public Builder sqlIdempotency() {
+            this.sqlIdempotency = true;
             return this;
         }
 

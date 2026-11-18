@@ -4,6 +4,7 @@ import in.jolt.IdempotencyStore;
 import in.jolt.db.Db;
 import in.jolt.db.TxMode;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,11 @@ import java.util.Optional;
  * Jolt's {@link IdempotencyStore} SPI on table {@code idempotency_key} (migration V5), so stored
  * responses survive a restart. {@link #begin} runs in one IMMEDIATE transaction, so two concurrent
  * requests with the same key cannot both start. Rows older than 24 hours are purged by the sweep.
+ *
+ * <p>A process killed mid-request leaves a claim that is never completed or released. Such a claim
+ * is a lease: once it is older than {@link #LEASE} the next request with the same key and
+ * fingerprint takes it over (and restarts the lease), instead of answering 409 until the purge. A
+ * different fingerprint is still a mismatch, and a completed response replays forever.
  */
 public final class SqlIdempotency implements IdempotencyStore {
 
@@ -24,7 +30,16 @@ public final class SqlIdempotency implements IdempotencyStore {
     // TODO(jolt#85): drop once Jolt's replay keeps the current request id.
     private static final String REQUEST_ID = "X-Request-Id";
 
-    private record Row(String fingerprint, Integer status, String headers, byte[] body) {}
+    /**
+     * How long an unfinished claim blocks its key. Keyed requests are short (the busy timeout is 5
+     * s, the mock gateway answers in microseconds), so two minutes is far past the longest
+     * legitimate request and still frees a crashed client's retry quickly. Too short a lease would
+     * let a slow live request run twice; too long leaves a customer stuck on 409.
+     */
+    public static final Duration LEASE = Duration.ofMinutes(2);
+
+    private record Row(
+            String fingerprint, Integer status, String headers, byte[] body, long createdAt) {}
 
     private final Db db;
     private final Clock clock;
@@ -41,7 +56,7 @@ public final class SqlIdempotency implements IdempotencyStore {
                 tx -> {
                     Optional<Row> row =
                             tx.queryOne(
-                                    "SELECT fingerprint, status, headers, body"
+                                    "SELECT fingerprint, status, headers, body, created_at"
                                             + " FROM idempotency_key WHERE scope = ? AND key = ?",
                                     rs -> {
                                         // NULL status marks a running request; getObject keeps NULL
@@ -53,7 +68,8 @@ public final class SqlIdempotency implements IdempotencyStore {
                                                         ? null
                                                         : ((Number) status).intValue(),
                                                 rs.getString("headers"),
-                                                rs.getBytes("body"));
+                                                rs.getBytes("body"),
+                                                rs.getLong("created_at"));
                                     },
                                     key.scope(),
                                     key.id());
@@ -72,7 +88,18 @@ public final class SqlIdempotency implements IdempotencyStore {
                         return Claim.mismatch();
                     }
                     if (r.status() == null) {
-                        return Claim.inFlight();
+                        long now = Sqls.ms(clock.instant());
+                        if (now - r.createdAt() < LEASE.toMillis()) {
+                            return Claim.inFlight();
+                        }
+                        // Abandoned by a crashed request: take it over, restarting the lease.
+                        tx.update(
+                                "UPDATE idempotency_key SET created_at = ?"
+                                        + " WHERE scope = ? AND key = ? AND status IS NULL",
+                                now,
+                                key.scope(),
+                                key.id());
+                        return Claim.started();
                     }
                     byte[] body = r.body() == null ? new byte[0] : r.body();
                     return Claim.completed(new Stored(r.status(), headers(r.headers()), body));

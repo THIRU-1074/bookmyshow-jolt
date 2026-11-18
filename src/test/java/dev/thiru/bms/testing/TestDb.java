@@ -73,6 +73,11 @@ public final class TestDb implements AutoCloseable {
         return db;
     }
 
+    /** The pooled Jolt database under {@link #db()}, for adapters that take Jolt's type. */
+    public in.jolt.db.Db joltDb() {
+        return jolt;
+    }
+
     @Override
     public void close() {
         jolt.close();
