@@ -77,6 +77,17 @@ web/
 
 `TargetArchitectureTest` enforces the layering (SPEC section 10). Rules for contributors and agents are in [AGENTS.md](AGENTS.md).
 
+## Documentation
+
+The hard parts of a ticketing system, solved and proven: two buyers racing for the last seat, holds that expire, a payment that lands after its hold died, duplicate webhooks, live seat maps for many viewers. Each is written up with the failing interleaving, the fix, where it lives and the test that proves it, and the document lists honestly what is not solved.
+
+- [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md): how the classic system design problems are solved, with proofs, limits, what is not solved, and how it would scale past one node. Machine-checked by `DesignDocPointersTest`, so a renamed class or test fails the build.
+- [docs/SPEC.md](docs/SPEC.md): the contract every lane builds against (domain, lifecycle, concurrency rules, REST API, schema).
+- [docs/RBAC.md](docs/RBAC.md): roles, the permission matrix, token handling and the webhook trust model.
+- [docs/ERD.md](docs/ERD.md): the entity-relationship diagram of the SQLite schema.
+- [docs/restructure/](docs/restructure/): the vertical-slice restructure plan, its decision records (for example ADR 0002 on gateway calls inside transactions) and the per-lane hand-backs.
+- [docs/JOLT_GAPS.md](docs/JOLT_GAPS.md): where the app still works around the framework.
+
 ## Security and RBAC
 
 Roles (`AUDIENCE`, `THEATRE_OWNER`, `ADMIN`), token handling, rate limits and the webhook trust model are described in [docs/RBAC.md](docs/RBAC.md).
