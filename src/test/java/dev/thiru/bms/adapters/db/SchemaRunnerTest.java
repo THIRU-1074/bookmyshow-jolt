@@ -26,7 +26,9 @@ class SchemaRunnerTest {
     @Test
     void appliesMigrationsInVersionOrderAndRecordsThem() {
         String url = Sqlite.jdbcUrl(dir.resolve("a.db"));
-        assertEquals(List.of(1, 2, 10), SchemaRunner.migrate(url, FIXTURES));
+        assertEquals(
+                List.of(1, 2, 10),
+                SchemaRunner.migrate(url, FIXTURES, java.time.Clock.systemUTC()));
         try (Db db = Sqlite.open(url)) {
             assertEquals(
                     List.of(1, 2, 10),
@@ -44,15 +46,16 @@ class SchemaRunnerTest {
     @Test
     void secondRunAppliesNothing() {
         String url = Sqlite.jdbcUrl(dir.resolve("b.db"));
-        SchemaRunner.migrate(url, FIXTURES);
-        assertEquals(List.of(), SchemaRunner.migrate(url, FIXTURES));
+        SchemaRunner.migrate(url, FIXTURES, java.time.Clock.systemUTC());
+        assertEquals(List.of(), SchemaRunner.migrate(url, FIXTURES, java.time.Clock.systemUTC()));
     }
 
     @Test
     void aFailingMigrationRollsBackAndStopsTheRun() {
         String url = Sqlite.jdbcUrl(dir.resolve("c.db"));
         assertThrows(
-                IllegalStateException.class, () -> SchemaRunner.migrate(url, "db/bad-migrations"));
+                IllegalStateException.class,
+                () -> SchemaRunner.migrate(url, "db/bad-migrations", java.time.Clock.systemUTC()));
         try (Db db = Sqlite.open(url)) {
             assertEquals(
                     List.of(1), db.query("SELECT version FROM schema_history", r -> r.getInt(1)));
@@ -68,11 +71,13 @@ class SchemaRunnerTest {
     @Test
     void aMigrationEditedAfterItWasAppliedIsRejected() throws Exception {
         String url = Sqlite.jdbcUrl(dir.resolve("d.db"));
-        SchemaRunner.migrate(url, FIXTURES);
+        SchemaRunner.migrate(url, FIXTURES, java.time.Clock.systemUTC());
         try (Db db = Sqlite.open(url)) {
             db.update("UPDATE schema_history SET checksum = 'tampered' WHERE version = 1");
         }
-        assertThrows(IllegalStateException.class, () -> SchemaRunner.migrate(url, FIXTURES));
+        assertThrows(
+                IllegalStateException.class,
+                () -> SchemaRunner.migrate(url, FIXTURES, java.time.Clock.systemUTC()));
         Files.deleteIfExists(dir.resolve("d.db"));
     }
 
@@ -117,7 +122,9 @@ class SchemaRunnerTest {
             IllegalStateException e =
                     assertThrows(
                             IllegalStateException.class,
-                            () -> SchemaRunner.migrate(failing, FIXTURES));
+                            () ->
+                                    SchemaRunner.migrate(
+                                            failing, FIXTURES, java.time.Clock.systemUTC()));
 
             assertEquals("migration V1 failed: commit refused", e.getMessage());
             assertSame(commit, e.getCause());

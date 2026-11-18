@@ -17,7 +17,7 @@ class SqlRefreshTokensContractTest extends RefreshTokenStoreContract {
     @Override
     protected RefreshTokenStore newStore() {
         String url = Sqlite.jdbcUrl(dir.resolve("contract.db"));
-        SchemaRunner.migrate(url);
+        SchemaRunner.migrate(url, java.time.Clock.systemUTC());
         db = Sqlite.open(url, 4, Duration.ofSeconds(10));
         return new SqlRefreshTokens(db);
     }

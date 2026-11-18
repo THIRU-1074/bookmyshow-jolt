@@ -125,7 +125,7 @@ public final class Main {
 
         String url = Sqlite.withPragmas(config.dbUrl());
         createParent(config.sqliteFile());
-        java.util.List<Integer> applied = SchemaRunner.migrate(url);
+        java.util.List<Integer> applied = SchemaRunner.migrate(url, clock);
         LOG.log(Level.INFO, "Migrations applied: " + applied);
         Db db = Sqlite.open(url, DB_POOL, Duration.ofSeconds(10));
         try {

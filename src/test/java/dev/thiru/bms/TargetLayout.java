@@ -27,6 +27,8 @@ import java.util.stream.Stream;
  *   <li>{@code adapters} never import {@code web} or {@code features}.
  *   <li>{@code web} imports features only in {@code WebModules}, the route table.
  *   <li>Only {@code Main} names adapters.
+ *   <li>Time comes from the injected {@code Clock}: production code never reads the wall clock
+ *       ({@link #WALL_CLOCK}), except {@link #CLOCK_FACTORY}, which creates the one system clock.
  * </ol>
  *
  * <p>It reads source, not bytecode, so it also sees fully qualified names written inline.
@@ -45,6 +47,29 @@ final class TargetLayout {
                     BASE + "web.",
                     BASE + "api.generated.");
 
+    /**
+     * The one file that may read the wall clock: {@code Main} creates {@code Clock.systemUTC()} and
+     * hands it to everything else (sweeper, use cases, stores, the migration stamp). Any other call
+     * would make time untestable and let two parts of the app disagree about "now".
+     */
+    static final String CLOCK_FACTORY = "Main.java";
+
+    /**
+     * Wall-clock reads: {@code X.now()} on the java.time types (an argument named like a clock is
+     * the injected one and fine), {@code System.currentTimeMillis()}, {@code Clock.system...()},
+     * {@code new Date()} and {@code Calendar.getInstance()}. {@code System.nanoTime()} is a
+     * monotonic stopwatch, not the time of day, so it is not matched.
+     */
+    static final Pattern WALL_CLOCK =
+            Pattern.compile(
+                    "\\b(?:Instant|LocalDateTime|LocalDate|LocalTime|ZonedDateTime|OffsetDateTime"
+                            + "|OffsetTime|Year|YearMonth|MonthDay)\\s*\\.\\s*now\\s*\\("
+                            + "(?!\\s*\\w*[cC]lock\\b)"
+                            + "|\\bSystem\\s*\\.\\s*currentTimeMillis\\s*\\("
+                            + "|\\bClock\\s*\\.\\s*system\\w*\\s*\\("
+                            + "|\\bnew\\s+(?:java\\.util\\.)?Date\\s*\\(\\s*\\)"
+                            + "|\\bCalendar\\s*\\.\\s*getInstance\\s*\\(");
+
     private static final Pattern IMPORT =
             Pattern.compile(
                     "^\\s*import\\s+(?:static\\s+)?([\\w.]+)(?:\\.\\*)?\\s*;", Pattern.MULTILINE);
@@ -62,6 +87,16 @@ final class TargetLayout {
             String rel = root.relativize(file).toString().replace('\\', '/');
             String source = read(file);
             String pkg = packageOf(source);
+            if (!rel.equals(CLOCK_FACTORY)) {
+                Matcher wall = WALL_CLOCK.matcher(stripCommentsAndStrings(source));
+                while (wall.find()) {
+                    out.add(
+                            rel
+                                    + ": time comes from the injected Clock, never the wall clock ("
+                                    + wall.group().replaceAll("\\s+", "")
+                                    + ")");
+                }
+            }
             for (String dep : dependencies(source)) {
                 String broken = check(rel, pkg, dep);
                 if (broken != null) {

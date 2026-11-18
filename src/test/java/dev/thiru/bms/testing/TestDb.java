@@ -61,7 +61,7 @@ public final class TestDb implements AutoCloseable {
             Path file = dir.resolve(FILE);
             // Closing the last connection normally checkpoints the WAL into the file; open copies a
             // leftover WAL too.
-            SchemaRunner.migrate(Sqlite.jdbcUrl(file));
+            SchemaRunner.migrate(Sqlite.jdbcUrl(file), java.time.Clock.systemUTC());
             file.toFile().deleteOnExit();
             dir.toFile().deleteOnExit();
             template = dir;

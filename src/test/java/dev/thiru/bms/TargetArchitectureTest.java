@@ -223,6 +223,53 @@ class TargetArchitectureTest {
     }
 
     @Test
+    void wallClockCallsOutsideMainAreCaught() {
+        assertEquals(
+                List.of(
+                        "features/booking/Expiry.java: time comes from the injected Clock, never"
+                                + " the wall clock (Instant.now()",
+                        "kernel/Stamps.java: time comes from the injected Clock, never the wall"
+                                + " clock (Clock.systemUTC()",
+                        "kernel/Stamps.java: time comes from the injected Clock, never the wall"
+                                + " clock (LocalDate.now()",
+                        "kernel/Stamps.java: time comes from the injected Clock, never the wall"
+                                + " clock (System.currentTimeMillis()"),
+                fixture("wall-clock").stream().sorted().toList());
+    }
+
+    @Test
+    void mainIsTheOnlyPlaceThatCreatesTheSystemClock() throws IOException {
+        // The allowed exception is real, not vacuous: Main does create it, and the fixture's Main
+        // is not reported.
+        assertTrue(
+                TargetLayout.WALL_CLOCK
+                        .matcher(Files.readString(SOURCES.resolve(TargetLayout.CLOCK_FACTORY)))
+                        .find());
+        assertTrue(
+                fixture("wall-clock").stream().noneMatch(v -> v.startsWith("Main.java")),
+                "Main is allowed to create the clock");
+    }
+
+    @Test
+    void aWallClockCallInARealSliceIsCaught(@TempDir Path copy) throws IOException {
+        try (Stream<Path> files = Files.walk(SOURCES)) {
+            for (Path f : files.filter(Files::isRegularFile).toList()) {
+                Path to = copy.resolve(SOURCES.relativize(f).toString());
+                Files.createDirectories(to.getParent());
+                Files.copy(f, to);
+            }
+        }
+        Path sql = copy.resolve("features/live/LiveSql.java");
+        Files.writeString(
+                sql, Files.readString(sql).replaceFirst("clock\\.instant\\(\\)", "Instant.now()"));
+        assertEquals(
+                1,
+                TargetLayout.violations(copy).stream()
+                        .filter(v -> v.startsWith("features/live/LiveSql.java: time comes"))
+                        .count());
+    }
+
+    @Test
     void aClassOtherThanMainNamingAnAdapterIsCaught() {
         assertEquals(
                 List.of(

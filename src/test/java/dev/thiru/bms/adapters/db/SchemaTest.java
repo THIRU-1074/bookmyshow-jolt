@@ -25,7 +25,7 @@ class SchemaTest {
     @BeforeEach
     void open() {
         String url = Sqlite.jdbcUrl(dir.resolve("bms.db"));
-        SchemaRunner.migrate(url);
+        SchemaRunner.migrate(url, java.time.Clock.systemUTC());
         db = Sqlite.open(url);
         // Fixture ids start at 9000 so they never collide with seed rows.
         db.update("INSERT INTO app_user VALUES (9000, 'u@example.test', 'x', 'U', 'AUDIENCE', 0)");

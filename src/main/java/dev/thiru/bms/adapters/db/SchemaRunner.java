@@ -56,26 +56,26 @@ public final class SchemaRunner {
     private SchemaRunner() {}
 
     /** Applies the application migrations; returns the versions applied by this call. */
-    public static List<Integer> migrate(String jdbcUrl) {
-        return migrate(jdbcUrl, DEFAULT_LOCATION);
+    public static List<Integer> migrate(String jdbcUrl, Clock clock) {
+        return migrate(jdbcUrl, DEFAULT_LOCATION, clock);
     }
 
     /** Applies the migrations under {@code location}; returns the versions applied by this call. */
-    public static List<Integer> migrate(String jdbcUrl, String location) {
+    public static List<Integer> migrate(String jdbcUrl, String location, Clock clock) {
         Map<Integer, Script> scripts = discover(location);
         try (Connection c = Sqlite.connect(jdbcUrl)) {
-            return migrate(c, scripts);
+            return migrate(c, scripts, clock);
         } catch (SQLException e) {
             throw new IllegalStateException("migration failed: " + e.getMessage(), e);
         }
     }
 
     /** Applies the migrations under {@code location} on {@code c}, which the caller closes. */
-    static List<Integer> migrate(Connection c, String location) throws SQLException {
-        return migrate(c, discover(location));
+    static List<Integer> migrate(Connection c, String location, Clock clock) throws SQLException {
+        return migrate(c, discover(location), clock);
     }
 
-    private static List<Integer> migrate(Connection c, Map<Integer, Script> scripts)
+    private static List<Integer> migrate(Connection c, Map<Integer, Script> scripts, Clock clock)
             throws SQLException {
         try (Statement st = c.createStatement()) {
             st.execute(
@@ -85,7 +85,7 @@ public final class SchemaRunner {
         }
         List<Integer> applied = new ArrayList<>();
         for (Script s : scripts.values()) {
-            if (apply(c, s)) {
+            if (apply(c, s, clock)) {
                 applied.add(s.version());
             }
         }
@@ -98,7 +98,7 @@ public final class SchemaRunner {
      * in its place: SQLite may already have ended the transaction, and the cleanup error would then
      * hide the real cause.
      */
-    private static boolean apply(Connection c, Script s) throws SQLException {
+    private static boolean apply(Connection c, Script s, Clock clock) throws SQLException {
         c.setAutoCommit(false);
         RuntimeException failure = null;
         try {
@@ -125,7 +125,7 @@ public final class SchemaRunner {
                 ps.setInt(1, s.version());
                 ps.setString(2, s.name());
                 ps.setString(3, s.checksum());
-                ps.setLong(4, Clock.systemUTC().millis());
+                ps.setLong(4, clock.millis());
                 ps.executeUpdate();
             }
             c.commit();

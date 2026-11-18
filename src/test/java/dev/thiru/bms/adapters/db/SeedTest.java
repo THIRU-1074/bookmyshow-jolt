@@ -21,7 +21,7 @@ class SeedTest {
     @BeforeEach
     void open() {
         String url = Sqlite.jdbcUrl(dir.resolve("seed.db"));
-        SchemaRunner.migrate(url);
+        SchemaRunner.migrate(url, java.time.Clock.systemUTC());
         db = Sqlite.open(url);
     }
 

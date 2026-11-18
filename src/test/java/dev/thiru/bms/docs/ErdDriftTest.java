@@ -40,7 +40,7 @@ class ErdDriftTest {
     @BeforeAll
     static void migrate() throws SQLException {
         String url = Sqlite.jdbcUrl(dir.resolve("erd.db"));
-        SchemaRunner.migrate(url);
+        SchemaRunner.migrate(url, java.time.Clock.systemUTC());
         try (Connection c = Sqlite.connect(url)) {
             schema = ErdModel.fromSchema(c);
         }

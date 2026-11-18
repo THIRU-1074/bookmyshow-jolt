@@ -19,7 +19,7 @@ abstract class DbTest {
     @BeforeEach
     void openDb() {
         String url = Sqlite.jdbcUrl(dir.resolve("bms.db"));
-        SchemaRunner.migrate(url);
+        SchemaRunner.migrate(url, java.time.Clock.systemUTC());
         // Pool larger than the concurrency tests need so waiting happens on the SQLite lock.
         db = Sqlite.open(url, 16, Duration.ofSeconds(30));
     }
