@@ -2,7 +2,7 @@
 
 A movie ticketing app (cities, movies, shows, seat holds, payments, tickets) built on [Jolt](https://github.com/THIRU-1074/custom-Http-Server), an Express-style Java HTTP framework. It is Jolt's reference app: every framework gap it hits becomes a Jolt issue, gets fixed upstream, and is listed in [docs/JOLT_GAPS.md](docs/JOLT_GAPS.md).
 
-Status: integrated on Jolt v0.4.1. All lanes are merged and wired in `Main`; an end-to-end test books a seat through the mock gateway on a real socket. The contract is [docs/SPEC.md](docs/SPEC.md). Every Jolt gap from #52 to #77 is fixed upstream and the app now uses the Jolt API for it; [docs/JOLT_GAPS.md](docs/JOLT_GAPS.md) says how each was replaced and lists what is still worked around.
+Status: **1.0.0**, built on Jolt v0.4.1. Live at https://bookmyshow-jolt.onrender.com (free tier, so the first request after idle is slow and the database resets on each deploy). What is in the release, and its known limits, are in [docs/RELEASE-1.0.0.md](docs/RELEASE-1.0.0.md). The contract is [docs/SPEC.md](docs/SPEC.md). Every Jolt gap from #52 to #77 is fixed upstream and the app uses the Jolt API for it; [docs/JOLT_GAPS.md](docs/JOLT_GAPS.md) says how each was replaced and lists what is still worked around.
 
 ## Run
 

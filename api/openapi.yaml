@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: BookMyShow on Jolt
-  version: 0.1.0
+  version: 1.0.0
   description: |
     The one schema for the HTTP API (SPEC section 7, access rules in docs/RBAC.md). It describes the
     JSON the server sends today, field for field; `ApiSchemaTest` boots the app and checks real
