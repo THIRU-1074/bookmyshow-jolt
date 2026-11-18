@@ -191,6 +191,54 @@ class PaymentRoutesTest {
                 kit.events().of(SeatEvent.Released.class));
     }
 
+    /**
+     * SYSTEM_DESIGN 4 end to end over HTTP: the first delivery fails inside the transaction (the
+     * gateway refund throws), so nothing is recorded; the redelivery of the same event id then
+     * succeeds, and a third delivery is a duplicate. One refund, one release, one event row.
+     */
+    @Test
+    void aFailedFirstDeliveryRollsBackAndTheRedeliveryAppliesOnceWithNoDuplicateEffects() {
+        String[] p = flow.pending(ada, "A2", "A3");
+        kit.events().published.clear();
+        kit.mutableClock().advance(Duration.ofMinutes(8));
+        kit.gateway().failRefunds = true;
+
+        flow.webhook("evt-redeliver", "payment.succeeded", p[1], 36000).expect(500);
+        assertEquals("PAYMENT_PENDING", flow.bookingStatus(p[0]), "rolled back");
+        assertEquals("INITIATED", flow.paymentStatus(p[1]));
+        assertEquals(0, eventRows("evt-redeliver"), "the event id was not recorded");
+        assertTrue(kit.events().published.isEmpty(), "nothing announced on rollback");
+        assertTrue(kit.gateway().refunds.isEmpty());
+
+        kit.gateway().failRefunds = false;
+        flow.webhook("evt-redeliver", "payment.succeeded", p[1], 36000)
+                .expect(200)
+                .jsonEquals("status", "EXPIRED");
+        assertEquals("REFUNDED", flow.paymentStatus(p[1]));
+        assertEquals(1, eventRows("evt-redeliver"));
+        assertEquals(List.of("gw_" + p[1] + ":36000"), kit.gateway().refunds);
+        assertEquals(1, kit.events().of(SeatEvent.Released.class).size());
+
+        flow.webhook("evt-redeliver", "payment.succeeded", p[1], 36000)
+                .expect(200)
+                .jsonEquals("duplicate", true);
+        assertEquals(1, kit.gateway().refunds.size(), "still one refund");
+        assertEquals(1, kit.events().of(SeatEvent.Released.class).size(), "still one release");
+        assertEquals(1, eventRows("evt-redeliver"));
+    }
+
+    private long eventRows(String eventId) {
+        return kit.db()
+                .inTransaction(
+                        tx ->
+                                tx.queryOne(
+                                                "SELECT COUNT(*) FROM payment_event"
+                                                        + " WHERE event_id = ?",
+                                                rs -> rs.getLong(1),
+                                                eventId)
+                                        .orElseThrow());
+    }
+
     /** The review's reproduction: payment.failed, then payment.succeeded for one payment. */
     @Test
     void paymentFailedThenPaymentSucceededRefundsTheCustomerOverHttp() {
