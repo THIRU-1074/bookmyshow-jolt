@@ -1,0 +1,2 @@
+CREATE TABLE half_done (id INTEGER PRIMARY KEY) STRICT;
+INSERT INTO no_such_table VALUES (1);

@@ -1,25 +1,55 @@
 # Jolt gaps
 
-Every Jolt limitation the app hits. Each interim workaround carries `TODO(jolt#N)` at its location and is deleted when the fix ships in a Jolt release; then the row is marked done with the closing PR and the release.
+Every Jolt limitation the app hits. Each interim workaround carries `TODO(jolt#N)` at its location and is deleted when the fix ships in a Jolt release; then the row is marked done with the release.
 
 Status: `open` (no fix released), `in progress` (fix branch exists), `released vX` (bump `jolt.version` and remove the workaround), `done` (workaround removed).
 
+The app runs on Jolt v0.4.1, which closes every row below. Gaps found during that upgrade are listed at the end; they are filed as #81 to #87 and each workaround carries its `TODO(jolt#N)`.
+
 | Gap | Jolt issue | Workaround location | Status |
 |---|---|---|---|
-| Repeated query params (`req.queryAll`) | [#52](https://github.com/THIRU-1074/custom-Http-Server/issues/52) | catalog query parsing in `web` (comma lists) | in progress |
-| App lifecycle hooks (`onStart`, `onStop`) | [#53](https://github.com/THIRU-1074/custom-Http-Server/issues/53) | `Main` (sweeper start, shutdown hook) | in progress |
-| Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `web.IdempotencyFilter` | in progress |
-| Schema migrations | [#55](https://github.com/THIRU-1074/custom-Http-Server/issues/55) | `adapters.db.SchemaRunner` | in progress |
-| IMMEDIATE tx, generated keys, batch, optimistic update | [#56](https://github.com/THIRU-1074/custom-Http-Server/issues/56) | `adapters.db` (JDBC URL `transaction_mode=IMMEDIATE`, row-count checks) | in progress |
-| Pagination helper | [#57](https://github.com/THIRU-1074/custom-Http-Server/issues/57) | `web.PageRequest`, `web.PageResult` | open |
-| Scheduled background tasks | [#58](https://github.com/THIRU-1074/custom-Http-Server/issues/58) | hold expiry sweeper in `Main` | open |
-| Webhook signature verification | [#59](https://github.com/THIRU-1074/custom-Http-Server/issues/59) | `adapters.payment.HmacVerifier` | open |
-| Configuration loader | [#60](https://github.com/THIRU-1074/custom-Http-Server/issues/60) | `AppConfig.fromEnv()` | open |
-| Nested and collection validation | [#61](https://github.com/THIRU-1074/custom-Http-Server/issues/61) | hold and layout validators in `web` | open |
-| Pub/sub hub for SSE | [#62](https://github.com/THIRU-1074/custom-Http-Server/issues/62) | `adapters.live.SeatEvents` | open |
-| Static files and views from the classpath | [#68](https://github.com/THIRU-1074/custom-Http-Server/issues/68) | `Main` (`STATIC_DIR`, `VIEWS_DIR`), `Dockerfile` | in progress |
-| `JoltTest` support for SSE and streams | [#69](https://github.com/THIRU-1074/custom-Http-Server/issues/69) | SSE tests over a loopback socket | open |
-| SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | `snapshot` event on every connect | open |
-| App-defined metrics and health checks | [#71](https://github.com/THIRU-1074/custom-Http-Server/issues/71) | `GET /api/health` DB check, `GET /api/admin/stats` | open |
+| Repeated query params (`req.queryAll`) | [#52](https://github.com/THIRU-1074/custom-Http-Server/issues/52) | none: `web.Query.list` reads `queryAll` and still splits comma lists | done (v0.4.1) |
+| App lifecycle hooks (`onStart`, `onStop`) | [#53](https://github.com/THIRU-1074/custom-Http-Server/issues/53) | `Main` registers `app.onStop(db::close)`; `Booted.close` still ends SSE streams before `Server.close()`, because stop hooks run only after the 5 s drain (#82) | done (v0.4.1) |
+| Idempotency-Key middleware | [#54](https://github.com/THIRU-1074/custom-Http-Server/issues/54) | `Idempotency.keys().store(...).required()` in `web.Idempotent`. Kept: `adapters.db.SqlIdempotency` implements Jolt's `IdempotencyStore` SPI so keys survive restarts (table rekeyed by Jolt's scope in V5), and `web.Idempotent` re-throws Jolt's plain-text refusals as problem+json `IDEMPOTENCY` and restores the request id on a replay (#85) | done (v0.4.1) |
+| Schema migrations | [#55](https://github.com/THIRU-1074/custom-Http-Server/issues/55) | kept: `adapters.db.SchemaRunner`. Jolt's `Migrations` keeps its history in `jolt_schema_history` with its own checksums, so on a database the runner already migrated (local `data/bms.db`, the Docker `/data` volume) it would run V1 again over existing tables. Render's disk is empty on each deploy, so switching would only be safe there; seeding Jolt's table from `schema_history` would mean copying Jolt's checksum format. Revisit if Jolt can adopt an existing history table (#86) | released v0.4.0, kept on purpose |
+| IMMEDIATE tx, generated keys, batch, optimistic update | [#56](https://github.com/THIRU-1074/custom-Http-Server/issues/56) | none: `Db.inTransaction(TxMode.IMMEDIATE, ...)` in `SqliteDb`, `SqlRefreshTokens` and `SqlIdempotency` with `busyTimeout(5s)`; `Sql.insert` for generated keys; `Sql.batch` for seat locks, booking seats and movie languages and genres; `Sql.updateExpecting` for the booking version check (mapped to `VERSION_CONFLICT`) | done (v0.4.1) |
+| Pagination helper | [#57](https://github.com/THIRU-1074/custom-Http-Server/issues/57) | `web.Paging`: Jolt `Page` and `Page.Result` build the envelope; the app still checks `page` and `size` itself because `Page.of` answers 400 without naming the field and silently caps `size`, where SPEC 7 wants 422 `errors.page`/`errors.size` | done (v0.4.1), parameter check kept |
+| Scheduled background tasks | [#58](https://github.com/THIRU-1074/custom-Http-Server/issues/58) | none: `app.every("expiry-sweep", SWEEP_INTERVAL, ...)` in `Main` | done (v0.4.1) |
+| Webhook signature verification | [#59](https://github.com/THIRU-1074/custom-Http-Server/issues/59) | verification is `Webhooks.hmacSha256(WEBHOOK_SECRET, "Bms-Signature").prefix("v1=").timestampHeader("Bms-Timestamp")` on the webhook route; `adapters.payment.WebhookSigner` stays because Jolt has no signer and the mock gateway must sign | done (v0.4.1) |
+| Configuration loader | [#60](https://github.com/THIRU-1074/custom-Http-Server/issues/60) | none: `AppConfig.from(Config)` reads every SPEC variable through Jolt's `Config.load()` and keeps only the app's own checks (secret length, admin pair, SQLite URL, base URL) | done (v0.4.1) |
+| Nested and collection validation | [#61](https://github.com/THIRU-1074/custom-Http-Server/issues/61) | request shape in `web.BookingModule.HOLD` and `web.AdminModule.SHOW` is a Jolt `Validator` (`Rules.each`, `Rules.nested`, all errors in one 422). Kept: `domain.SeatLayout` and `domain.SeatHold` build their own `rows[3].seats` keys because the domain may not import Jolt (SPEC 10); `web.PaymentModule` has only flat fields | done (v0.4.1) |
+| Pub/sub hub for SSE | [#62](https://github.com/THIRU-1074/custom-Http-Server/issues/62) | `adapters.live.LiveSeatHub` publishes to a Jolt `Hub` (one topic per show; cap, bounded queues and slow-subscriber drop are Jolt's) and keeps a small hand-off queue so the pull-based `LiveSeats` port and the snapshot-first route stay as they are; it also tracks streams to end them at shutdown (#83) | done (v0.4.1) |
+| Static files and views from the classpath | [#68](https://github.com/THIRU-1074/custom-Http-Server/issues/68) | views: `app.viewsClasspath("/views", null)`, with `VIEWS_DIR` as an override. Kept: the UI is the React build served by `Static.serve` from `STATIC_DIR` (`web/dist`, `/app/static` in Docker), because Node builds it outside the Maven jar | done (v0.4.1) |
+| `JoltTest` support for SSE and streams | [#69](https://github.com/THIRU-1074/custom-Http-Server/issues/69) | none: `web.LiveSseTest` runs through `JoltTest` (`maxEvents`, `timeout`, `events()`); `EndToEndTest` still streams over a real socket on purpose | done (v0.4.1) |
+| SSE event ids and `Last-Event-ID` | [#70](https://github.com/THIRU-1074/custom-Http-Server/issues/70) | seat events carry the hub's `id:` through `EventStream.event(id, name, data)`. Kept on purpose: a `snapshot` on every connect, including one with `Last-Event-ID`, because SPEC 7 and the UI rely on it and it already restores the full state; replaying older events after it adds nothing | done (v0.4.1) |
+| App-defined metrics and health checks | [#71](https://github.com/THIRU-1074/custom-Http-Server/issues/71) | `app.health("db", ...)` feeds `/_jolt/health`, and the hub adds `bms_sse_subscribers` and `bms_sse_dropped_total` to `/_jolt/metrics`. Kept: `GET /api/health` with its `{"status","db"}` shape, which Render's health check and the Docker `HEALTHCHECK` use (#84), and `GET /api/admin/stats`, which is a SPEC 7 admin endpoint | done (v0.4.1) |
+| Stock middleware refusals (`JwtAuth.middleware`, `Auth.requireRole`, `RateLimit`) bypass `problemJson` and `onError` and write `text/plain` | [#76](https://github.com/THIRU-1074/custom-Http-Server/issues/76) | none: `JwtAuth.middleware`, `Auth.requireRole`, `RateLimit` and `Csrf.protect` are installed as they are | done (v0.4.1) |
+| `onError` mappers cannot see the request, so problem bodies cannot carry `requestId` | [#77](https://github.com/THIRU-1074/custom-Http-Server/issues/77) | bodies now come from `app.onError((e, req) -> ...)` and Jolt adds `requestId`; `web.Problems.middleware` only re-throws domain errors as `ApiException` (an `HttpException`) and unexpected ones as a bare 500, see #81 below | done (v0.4.1) |
 
-Not needed for v1: [#63](https://github.com/THIRU-1074/custom-Http-Server/issues/63) TTL cache (ETag covers the catalog).
+[#63](https://github.com/THIRU-1074/custom-Http-Server/issues/63) TTL cache (v0.4.1): `web.CatalogCache` serves cities, the movie list and show listings from a 60 s `TtlCache` (the same minute as their `Cache-Control`), cleared after every successful admin or owner write; metrics `bms_catalog_cache_*`.
+
+## Where each workaround lives
+
+Found with `grep -rn "TODO(jolt#" src`. The old marker in `V3__idempotency.sql` stays because applied migrations are checksummed and must not change; V5 replaces that table.
+
+| Jolt issue | File holding the workaround |
+|---|---|
+| #81 | `src/main/java/dev/thiru/bms/web/Problems.java` (`middleware`) |
+| #82 | `src/main/java/dev/thiru/bms/Main.java` (`Booted.close`) |
+| #83 | `src/main/java/dev/thiru/bms/adapters/live/LiveSeatHub.java` |
+| #84 | `src/main/java/dev/thiru/bms/web/WebModules.java` (`/api/health`) |
+| #85 | `src/main/java/dev/thiru/bms/web/Idempotent.java`, `adapters/db/SqlIdempotency.java` |
+| #86 | `src/main/java/dev/thiru/bms/adapters/db/SchemaRunner.java` |
+| #87 | `src/main/java/dev/thiru/bms/web/CatalogCache.java` (`key`) |
+
+## Gaps found in v0.4.1
+
+| Jolt issue | Gap | Effect on the app | Workaround | Status |
+|---|---|---|---|---|
+| [#81](https://github.com/THIRU-1074/custom-Http-Server/issues/81) (A) | Jolt logs every mapped exception that is not an `HttpException` at WARNING with its stack trace (`Mapped exception on GET /path`). Expected outcomes (a seat conflict, a 404) flood the log, and messages may carry user data. | SPEC 9 wants one log line per request. | `web.Problems.middleware` turns domain errors into `ApiException` (an `HttpException`) and logs unexpected ones by class and request id before re-throwing a bare 500. | open |
+| [#82](https://github.com/THIRU-1074/custom-Http-Server/issues/82) (B) | No hook runs before `Server.close()` drains, and stop hooks run after it. Long-lived SSE streams hold the drain for its full 5 s grace period unless the app ends them first. | Slower shutdown. | `Main.Booted.close` closes every live stream, then calls `Server.close()`; the JVM shutdown hook calls `Booted.close` instead of `closeOnShutdown()`. | open |
+| [#83](https://github.com/THIRU-1074/custom-Http-Server/issues/83) (C) | `Hub` cannot end the subscribers of a topic or of the whole hub, `publish` does not return the id it assigned, and with `replay > 0` a topic is never removed, so its replay buffer outlives the show. `hub.sse` also cannot send a first event (the snapshot) before the stream, nor named events. | The app subscribes with `hub.subscribe` and writes SSE itself, tracks its own streams for shutdown, and runs with replay 0. | `adapters.live.LiveSeatHub` | open |
+| [#84](https://github.com/THIRU-1074/custom-Http-Server/issues/84) (D) | Registered health checks cannot be run from app code, and `/_jolt/health` only exists when metrics are exposed. An app that must keep its own health URL and shape cannot reuse the checks. | `/api/health` calls the same `dbUp` supplier as the `db` check, so the two cannot drift. | `web.WebModules` | open |
+| [#85](https://github.com/THIRU-1074/custom-Http-Server/issues/85) (E) | `Idempotency` writes its 400, 409, 422 and 503 refusals directly as `text/plain`, bypassing problem+json and `onError` (listed as a follow-up in the 0.4.1 notes). Its replay also restores the first request's `X-Request-Id`, because `RequestId` sets the header before the handler and the snapshot keeps it. | SPEC 7 wants problem+json with `code: IDEMPOTENCY`, and SPEC 9 wants each response to echo its own request id. | `web.Idempotent` re-throws refusals as `ApiException` and re-sets `X-Request-Id` on a replay; `adapters.db.SqlIdempotency` does not store `X-Request-Id`. | open |
+| [#86](https://github.com/THIRU-1074/custom-Http-Server/issues/86) (F) | `Migrations` cannot take over a database whose history another runner recorded: there is no baseline option ("treat V1..Vn as applied") or way to import an existing history table. | The app keeps its own `SchemaRunner`. | `adapters.db.SchemaRunner` | open |
+| [#87](https://github.com/THIRU-1074/custom-Http-Server/issues/87) (G) | `Request.rawQuery()` is not public (Jolt's own `Page.Result.link` uses it), so a cache key must be rebuilt from `query()` and `queryAll`. | Minor. | `web.CatalogCache.key` | open |

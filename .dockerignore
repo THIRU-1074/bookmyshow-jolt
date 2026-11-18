@@ -1,0 +1,16 @@
+target/
+.git/
+.worktrees/
+.claude/
+data/
+*.db
+*.db-shm
+*.db-wal
+.idea/
+.vscode/
+*.iml
+Dockerfile
+.dockerignore
+web/node_modules/
+web/dist/
+web/screenshots/

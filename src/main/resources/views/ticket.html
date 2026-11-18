@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ticket {{code}}</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <main class="ticket">
+    <h1>Ticket <span class="ticket-code">{{code}}</span></h1>
+    <dl>
+      <dt>Movie</dt><dd>{{movie}}</dd>
+      <dt>Cinema</dt><dd>{{cinema}}</dd>
+      <dt>Screen</dt><dd>{{screen}}</dd>
+      <dt>Date</dt><dd>{{date}}</dd>
+      <dt>Time</dt><dd>{{time}}</dd>
+      <dt>Seats</dt><dd><ul class="ticket-seats">{{#each seats}}<li>{{.}}</li>{{/each}}</ul></dd>
+      <dt>Amount</dt><dd>INR {{amount}}</dd>
+    </dl>
+  </main>
+</body>
+</html>

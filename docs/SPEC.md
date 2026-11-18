@@ -4,7 +4,7 @@ The contract every lane builds against. A change to this file is a PR of its own
 
 ## 1. Scope
 
-Single-node movie ticketing: browse a city's movies and shows, hold seats, pay through a mock gateway, get a ticket, cancel with a time-based refund. Admins manage the catalog and read reports. Out of scope for v1: real payments, multi-node deployment, Postgres, offers and coupons, food and beverages, email or SMS.
+Single-node movie ticketing: browse a city's movies and shows, hold seats, pay through a mock gateway, get a ticket, cancel with a time-based refund. Theatre owners run the screens, shows and reports of the cinemas an admin links them to; admins manage the whole catalog, the owners and every report. Out of scope for v1: real payments, multi-node deployment, Postgres, offers and coupons, food and beverages, email or SMS.
 
 ## 2. Conventions
 
@@ -22,11 +22,12 @@ Single-node movie ticketing: browse a city's movies and shows, hold seats, pay t
 | Cinema | id, cityId, name, address | name unique within city |
 | Screen | id, cinemaId, name, layout | name unique within cinema; layout valid (below); capacity 1..1000 |
 | Movie | id, title, languages[], genres[], certificate, durationMinutes, releaseDate, posterUrl, description | title 1..120 chars; languages and genres non-empty, no duplicates; certificate in `U, UA, A, S`; duration 1..400; posterUrl https or a site-relative path; description at most 2000 chars |
-| Show | id, movieId, screenId, startsAt, language, format, prices{category: amount}, status | language is one of the movie's; format in `2D, 3D, IMAX`; a price (100..1000000 paise) for every layout category and no others; status `SCHEDULED` or `CANCELLED`; shows on one screen MUST NOT overlap, where a show occupies `[startsAt, startsAt + duration + 15 min)` |
-| SeatHold | id, showId, userId, seats[], createdAt, expiresAt, status | 1..`MAX_SEATS` distinct seats that exist and are not blocked; expiresAt = createdAt + `HOLD_TTL`; all-or-nothing; status `ACTIVE, CONSUMED, RELEASED, EXPIRED` |
-| Booking | id, code, userId, showId, holdId, seats[], amount, currency, status, expiresAt, refundAmount, version, createdAt, updatedAt | amount = sum of seat prices at hold time; code `BK` + 8 Crockford base32 chars, unique; version starts at 0 and increments on every write |
+| Show | id, movieId, screenId, startsAt, endsAt, language, format, prices{category: amount}, status | language is one of the movie's; format in `2D, 3D, IMAX`; a price (100..1000000 paise) for every layout category and no others; status `SCHEDULED` or `CANCELLED`; endsAt = startsAt + movie duration + 15 min, so the cleaning buffer is included; shows on one screen MUST NOT overlap, where a show occupies `[startsAt, endsAt)` |
+| SeatHold | id, showId, userId, seats[], createdAt, expiresAt, status | 1..`MAX_SEATS` distinct seats that exist and are not blocked (an empty list or more than `MAX_SEATS` is 422 `VALIDATION` on the `seats` field); expiresAt = createdAt + `HOLD_TTL`; all-or-nothing; status `ACTIVE, CONSUMED, RELEASED, EXPIRED` |
+| Booking | id, code, userId, showId, holdId, seats[], amount, currency, status, expiresAt, refundAmount, checkoutCount, version, createdAt, updatedAt | each booking seat carries (seat, category, price) captured at hold time; amount = sum of seat prices; checkoutCount counts checkouts and is capped at 3; code `BK` + 8 Crockford base32 chars, unique; version starts at 0 and increments on every write |
 | Payment | id, bookingId, amount, currency, status, gatewayRef, refundedAmount, createdAt, updatedAt | amount = booking amount; status `INITIATED, SUCCEEDED, FAILED, REFUNDED`; refundedAmount <= amount |
-| User | id, email, passwordHash, name, roles, createdAt | email unique, stored lowercase; passwordHash from `PasswordHasher`; password 10..128 chars; roles subset of `USER, ADMIN`, never empty |
+| User | id, email, passwordHash, name, roles, createdAt | email unique, stored lowercase; passwordHash from `PasswordHasher`; password 10..128 chars; roles subset of `AUDIENCE, THEATRE_OWNER, ADMIN`, never empty; every account holds `AUDIENCE` and it cannot be removed |
+| CinemaOwner | cinemaId, userId | the pair is unique; a user may own many cinemas and a cinema may have many owners; only a user holding `THEATRE_OWNER` has links |
 
 **Seat layout** (JSON, validated by the domain):
 
@@ -35,7 +36,17 @@ Single-node movie ticketing: browse a city's movies and shows, hold seats, pay t
  "rows": [{"row": "A", "seats": 14, "category": "CLASSIC", "aisleAfter": [4, 10], "blocked": [1]}]}
 ```
 
-Rules: rows unique and contiguous from `A`; 1..26 rows; seats 1..50 per row; category codes `[A-Z_]{2,16}`, unique, each used by at least one row; `aisleAfter` and `blocked` values within 1..seats. Capacity = sum of seats minus blocked.
+Rules: rows unique and contiguous from `A`; 1..26 rows; seats 1..50 per row; category codes `[A-Z_]{2,16}`, unique, each used by at least one row; `aisleAfter` and `blocked` values within 1..seats. `blocked` MUST NOT contain duplicates (rejected as 422); every layout MUST have at least one bookable seat. Capacity = sum of seats minus blocked.
+
+**Roles and cinema ownership.** There are exactly three roles. Every account holds `AUDIENCE`; `THEATRE_OWNER` and `ADMIN` are added on top of it.
+
+| Role | Granted by | May |
+|---|---|---|
+| `AUDIENCE` | every account; `POST /api/auth/register` always creates `AUDIENCE` only and ignores any `roles` in the body | browse, hold, book, pay, cancel and see tickets; only their own holds and bookings |
+| `THEATRE_OWNER` | an admin, by promoting an existing account and linking it to cinemas; there is no self-signup and no application flow | everything `AUDIENCE` may, plus screens, seat layouts, shows (create, cancel with refunds) and sales and occupancy reports, only for the cinemas linked to them |
+| `ADMIN` | the `ADMIN_EMAIL` account at startup, or another admin | everything: cities, movies, cinemas, every screen, show and report, owner links and roles |
+
+Ownership rules: a theatre owner's scope is the set of cinemas linked to them in `cinema_owner`, read from the database inside each use case's transaction, so an unlink takes effect at once. A screen, show or report of a cinema outside that scope is 404 `NOT_FOUND`, never 403, so other cinemas' ids cannot be probed. Linking a user to a cinema grants `THEATRE_OWNER`; revoking `THEATRE_OWNER` removes every link of that user; unlinking the last cinema keeps the role. Deleting a cinema deletes its links. An admin MUST NOT remove their own `ADMIN` role (409 `CONFLICT`). Owners MUST NOT create or change cities, movies or cinemas, link owners or change roles.
 
 ## 4. Booking lifecycle
 
@@ -53,30 +64,33 @@ Rules: rows unique and contiguous from `A`; 1..26 rows; seats 1..50 per row; cat
 | (hold ACTIVE) | HELD | `POST /api/bookings` | owner | hold ACTIVE and unexpired; hold becomes CONSUMED; booking.expiresAt = hold.expiresAt |
 | HELD | PAYMENT_PENDING | `POST /api/bookings/{id}/checkout` | owner | unexpired; at most 3 checkouts per booking; expiresAt = max(expiresAt, now + `PAYMENT_WINDOW`) |
 | PAYMENT_PENDING | CONFIRMED | webhook `payment.succeeded` | gateway | unexpired, every seat lock still owned by this booking, amount matches; locks become BOOKED |
-| PAYMENT_PENDING | HELD | webhook `payment.failed` | gateway | unexpired; payment FAILED; the user may check out again |
-| HELD, PAYMENT_PENDING | EXPIRED | sweeper or lazy check | system | now >= expiresAt; locks deleted; a later success webhook marks the payment SUCCEEDED then REFUNDED in full |
-| HELD | CANCELLED | `POST /api/bookings/{id}/cancel` | owner | locks deleted; no payment exists |
+| PAYMENT_PENDING | HELD | webhook `payment.failed` | gateway | unexpired; payment FAILED; the user may check out again. A success webhook whose amount or currency does not match also marks the payment FAILED and returns the booking to HELD (422 to the caller) |
+| HELD, PAYMENT_PENDING | EXPIRED | sweeper or lazy check | system | now >= expiresAt; locks deleted; a success webhook arriving after expiry or cancellation marks the payment SUCCEEDED then REFUNDED in full (refundedAmount = amount) |
+| (payment FAILED) | (booking unchanged) | webhook `payment.succeeded` for a payment already FAILED | gateway | the gateway captured money for an attempt we had closed: the payment is marked SUCCEEDED then REFUNDED in full through the gateway in the same transaction; the booking, its status and its seat locks are untouched (a HELD booking stays retryable) and no seat event is published. Amount and currency are checked first as always. A success for a payment already SUCCEEDED or REFUNDED is a no-op, so a second event id never refunds twice |
+| HELD | CANCELLED | `POST /api/bookings/{id}/cancel` | owner | locks deleted; no payment exists. Cancelling a booking whose expiresAt has passed but which the sweeper has not yet marked EXPIRED is 409 `BOOKING_STATE` |
 | PAYMENT_PENDING | (none) | cancel | owner | 409 `PAYMENT_IN_PROGRESS` |
 | CONFIRMED | REFUNDED or CANCELLED | cancel | owner | before show start only (below); locks deleted |
-| CONFIRMED, HELD, PAYMENT_PENDING | REFUNDED or CANCELLED | `POST /api/admin/shows/{id}/cancel` | admin | CONFIRMED gets a full refund; others become CANCELLED |
+| CONFIRMED, HELD, PAYMENT_PENDING | REFUNDED or CANCELLED | `POST /api/admin/shows/{id}/cancel` or `POST /api/owner/shows/{id}/cancel` | admin, or a theatre owner of the show's cinema | CONFIRMED gets a full refund; others become CANCELLED |
 
-**Refund rule** (t = startsAt - now at cancellation): t > 24 h: 100 %; 4 h <= t <= 24 h: 50 %, rounded down to the paisa; 0 < t < 4 h: 0 % (status CANCELLED, seats released for resale); t <= 0: 409 `SHOW_STARTED`. The mock gateway refunds synchronously.
+**Refund rule** (t = startsAt - now at cancellation): t > 24 h: 100 %; 4 h <= t <= 24 h: 50 %, rounded down to the paisa; 0 < t < 4 h: 0 % (status CANCELLED, seats released for resale); t <= 0: 409 `SHOW_STARTED`. The mock gateway refunds synchronously. A partial refund leaves the payment REFUNDED with `refundedAmount` set to the refunded paise (less than `amount`); payment status is never left SUCCEEDED once any refund is made.
 
-Terminal states: EXPIRED, CANCELLED, REFUNDED. Sales for a show close at startsAt: holds after that give 409 `SHOW_STARTED`.
+Terminal states: EXPIRED, CANCELLED, REFUNDED. Sales for a show close at startsAt, and startsAt == now counts as started: holds then give 409 `SHOW_STARTED`. A hold on a CANCELLED show gives 409 `BOOKING_STATE`.
 
 ## 5. Concurrency and correctness
 
 1. **Seat locks.** Table `seat_lock` has primary key `(show_id, seat_id)`; a row exists only while the seat is held or booked. The primary key is the single guarantee against double booking; application checks are only for friendly errors. No partial index is needed because released seats have no row.
 2. **IMMEDIATE transactions.** Create hold, create booking, checkout, webhook processing, cancel, expiry and show cancel each run in one SQLite `BEGIN IMMEDIATE` transaction (`Db.inTransaction(TxMode.IMMEDIATE, ...)`), with WAL mode and `busy_timeout=5000`.
 3. **Create hold**, in one transaction: check the show is SCHEDULED and not started; validate the seats; release the caller's other ACTIVE hold for the same show; delete expired HELD locks for the requested seats (lazy expiry); insert one lock per seat. A primary-key violation rolls back the whole hold and gives 409 `SEAT_UNAVAILABLE` with `conflicts: [seatIds]`.
-4. **Optimistic version.** Every booking write is `UPDATE booking SET ..., version = version + 1 WHERE id = ? AND version = ?` expecting 1 row (`tx.updateExpecting`). A miss re-reads the booking and re-applies the transition rules once, then gives 409 `VERSION_CONFLICT`.
+4. **Optimistic version.** Every booking write is `UPDATE booking SET ..., version = version + 1 WHERE id = ? AND version = ?` and the code checks that `tx.update` returned exactly 1 row (`PaymentSql#updateBooking`, `BookingSql`); any other count raises `VERSION_CONFLICT`. A miss re-reads the booking and re-applies the transition rules once, then gives 409 `VERSION_CONFLICT`.
 5. **Expiry.** A sweeper runs every `SWEEP_INTERVAL` (30 s) and expires holds and bookings with expiresAt <= now in batches of 500. Correctness never depends on the sweeper: every transition re-checks expiresAt inside its transaction.
 6. **Limits.** `HOLD_TTL` 7 min and `MAX_SEATS` 10 (both configurable). One ACTIVE hold per user per show.
-7. **Idempotency.** `Idempotency-Key` (1..128 printable ASCII) is REQUIRED on `POST /api/holds`, `POST /api/bookings`, `POST /api/bookings/{id}/checkout`, `POST /api/bookings/{id}/cancel` and every admin `POST`; missing gives 400. Scope is the authenticated user. A replay returns the stored response with `Idempotency-Replayed: true`; the same key with a different body gives 422; a request still running gives 409.
+7. **Idempotency.** `Idempotency-Key` (1..128 printable ASCII) is REQUIRED on `POST /api/holds`, `POST /api/bookings`, `POST /api/bookings/{id}/checkout`, `POST /api/bookings/{id}/cancel` and every admin and owner `POST`; missing gives 400. Scope is the authenticated user. A replay returns the stored response with `Idempotency-Replayed: true`; the same key with a different body gives 422; a request still running gives 409. An unfinished claim is a lease of 2 minutes (`SqlIdempotency.LEASE`): after that the next request with the same key and the same fingerprint takes it over and runs (a crashed process never completes or releases its claim); a different body is still 422, and a completed response replays until the 24 h purge.
 8. **Webhook deduplication.** `payment_event.event_id` is unique; a duplicate delivery returns 200 `{"duplicate": true}` without side effects.
 9. **Money.** Amounts are computed server side from show prices; client-sent amounts are ignored.
 
 ## 6. SQLite schema
+
+**Entity relationship diagram.** [docs/ERD.md](ERD.md) holds the ERD of every table below, and of later migrations, and the table notes. Any change to a table, column, constraint, index, migration or kernel entity MUST update docs/ERD.md in the same commit; `ErdDriftTest` fails the build when the diagram and the migrated schema disagree. The schema in the migrations is authoritative: where this section and the migrations differ, the migrations win and this section is corrected.
 
 `V1__schema.sql` (in `src/main/resources/db/migrations`). Every table is `STRICT`; `PRAGMA foreign_keys = ON` per connection.
 
@@ -134,11 +148,20 @@ CREATE TABLE payment_event (event_id TEXT PRIMARY KEY, payment_id TEXT NOT NULL,
   received_at INTEGER NOT NULL) STRICT;
 ```
 
+`V3__idempotency.sql` created the `idempotency_key` table; `V5__idempotency_scope.sql` replaced it: it is now the store behind Jolt's `IdempotencyStore` SPI, `idempotency_key (scope, key, fingerprint, status, headers, body, created_at, PRIMARY KEY (scope, key))`. `scope` is Jolt's client scope `u:<user id>`, `key` the client's `Idempotency-Key`, `fingerprint` Jolt's fingerprint of the request (method, path and body), `status` NULL while the request runs (an unfinished claim older than the 2 minute lease may be reclaimed, section 5.7), and `headers` the replayable response headers as a JSON array of `[name, value]` pairs (`X-Request-Id` is never stored). Rows older than 24 hours are purged. `schema_history (version PK, name, checksum, applied_at)` is not in a migration file: `SchemaRunner` creates it and records each applied migration with a checksum so an edited migration fails startup. The composite primary key `(show_id, seat_id)` of `seat_lock` is the double-booking guard: two holds can never insert the same seat of a show, whatever the application checked first. `V4__roles.sql` rewrites the stored role `USER` to `AUDIENCE` in `app_user.roles` and adds the owner link:
+
+```sql
+CREATE TABLE cinema_owner (cinema_id INTEGER NOT NULL REFERENCES cinema(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+  PRIMARY KEY (cinema_id, user_id)) STRICT;
+CREATE INDEX cinema_owner_user ON cinema_owner (user_id);
+```
+
 `V2__seed.sql`: cities `bengaluru`, `chennai`, `mumbai` (all `Asia/Kolkata`); 6 cinemas (2 per city); 2-3 screens each with layouts of 80-250 seats in two or three categories (`CLASSIC`, `PRIME`, `RECLINER`) and at least one blocked seat and aisles; 12 fictional movies (for example "The Monsoon Cipher", "Kaveri Nights", "Last Train to Hampi") in `en, hi, ta, te, kn` with genres from `Action, Comedy, Drama, Thriller, Romance, Animation, Sci-Fi, Horror, Family`; shows 4-5 per screen per day at 10:00, 13:30, 17:00, 20:30 and 23:15 local, non-overlapping. Shows are generated relative to the migration date with a recursive CTE for 14 days; no users are seeded (admin comes from env).
 
 ## 7. REST API
 
-Base path `/api`. JSON in and out, UTF-8. Auth is `Authorization: Bearer <access JWT>`; claims `sub` (user id) and `roles`. Roles: `-` public, `U` any signed-in user, `A` ADMIN.
+Base path `/api`. JSON in and out, UTF-8. Auth is `Authorization: Bearer <access JWT>`; claims `sub` (user id) and `roles` (read from the stored user on every issue and refresh). Roles: `-` public, `U` any signed-in user, `O` THEATRE_OWNER scoped to their cinemas (an ADMIN passes with every cinema in scope), `A` ADMIN. The per-route matrix is `docs/RBAC.md`.
 
 **Errors** are `application/problem+json`: `{"type":"about:blank","title":"Conflict","status":409,"detail":"Seat C7 is no longer available","code":"SEAT_UNAVAILABLE","conflicts":["C7"]}`. Validation gives 422 with `errors: {"seats[2]": "unknown seat"}`. Stable `code` values: `VALIDATION`, `NOT_FOUND`, `SEAT_UNAVAILABLE`, `HOLD_EXPIRED`, `BOOKING_STATE`, `PAYMENT_IN_PROGRESS`, `SHOW_STARTED`, `LIMIT_EXCEEDED`, `VERSION_CONFLICT`, `IDEMPOTENCY`, `RATE_LIMITED`, `UNAUTHENTICATED`, `FORBIDDEN`.
 
@@ -154,11 +177,13 @@ Base path `/api`. JSON in and out, UTF-8. Auth is `Authorization: Bearer <access
 | POST /api/auth/login | - | `{email, password}` | 200 as register; 401 on any mismatch (same message) |
 | POST /api/auth/refresh | cookie | - | 200 `{accessToken, expiresIn}`, rotated cookie; 401 reused or expired |
 | POST /api/auth/logout | cookie | - | 204, cookie cleared, family revoked |
-| GET /api/me | U | - | 200 `{id, email, name, roles}` |
+| GET /api/me | U | - | 200 `{id, email, name, roles}`; roles drawn from `AUDIENCE, THEATRE_OWNER, ADMIN` |
 
 Access tokens live 15 min. The refresh token (30 days) is only in cookie `bms_refresh` (HttpOnly, Secure when HTTPS, SameSite=Strict, Path=/api/auth); `/api/auth` routes are behind `Csrf.protect()`.
 
 ### Catalog (public, `ETag` and `Cache-Control: public, max-age=60`)
+
+The server also keeps `GET /api/cities`, `GET /api/movies` and `GET /api/movies/{id}/shows` in a 60 s in-memory cache keyed by path and query (`TtlCache`), so they are at most as stale as `max-age` already allows. Any successful admin or owner write clears it. The seat map is never cached.
 
 | Method, path | Query | Response |
 |---|---|---|
@@ -174,7 +199,7 @@ Access tokens live 15 min. The refresh token (30 days) is only in cookie `bms_re
 
 | Method, path | Role | Request | Response |
 |---|---|---|---|
-| GET /api/shows/{id}/seats | - | - | 200 `{showId, version, categories:[{code,name,amount}], rows:[{row, seats:[{id, number, category, status}], aisleAfter}], holdTtlSeconds}`; status `AVAILABLE, HELD, BOOKED, BLOCKED`; `ETag` + `Cache-Control: no-cache` |
+| GET /api/shows/{id}/seats | - | - | 200 `{showId, version, categories:[{category,name,amount}], rows:[{row, seats:[{id, number, category, status}], aisleAfter}], holdTtlSeconds}`; `version` is a content hash of the seat states (equal maps give equal versions; it is not a counter); status `AVAILABLE, HELD, BOOKED, BLOCKED`; `ETag` + `Cache-Control: no-cache` |
 | GET /api/shows/{id}/events | - | - | SSE stream (below) |
 | POST /api/holds | U, key | `{showId, seats:["C7","C8"]}` | 201 `{id, showId, seats, amount, currency, expiresAt}`; 409 `SEAT_UNAVAILABLE`/`SHOW_STARTED`; 422 |
 | DELETE /api/holds/{id} | owner | - | 204; 404 if not owner or not ACTIVE |
@@ -194,11 +219,11 @@ Booking JSON: `{id, code, status, show:{id, movieTitle, cinemaName, screenName, 
 - `POST /api/payments/webhook` (public, verified by signature):
   - headers `Bms-Timestamp: <unix seconds>`, `Bms-Signature: v1=<hex HMAC-SHA256(WEBHOOK_SECRET, timestamp + "." + rawBody)>`;
   - body `{eventId, type: "payment.succeeded"|"payment.failed", paymentId, gatewayRef, amount, currency, occurredAt}`;
-  - 401 on a missing or bad signature (constant-time compare) or a timestamp more than 300 s from now; 200 `{"duplicate":true}` for a seen `eventId`; 422 on amount or currency mismatch (payment marked FAILED); 200 `{"status": "<booking status>"}` otherwise.
+  - 401 on a missing or bad signature (constant-time compare) or a timestamp more than 300 s from now; 200 `{"duplicate":true}` for a seen `eventId`; 422 on amount or currency mismatch (payment marked FAILED and the booking returned to HELD); 200 `{"status": "<booking status>"}` otherwise. A `payment.succeeded` for a payment already FAILED is refunded in full (section 4) and answers 200 with the unchanged booking status; if the refund call fails the transaction rolls back, the answer is 500 and a redelivery is processed afresh.
 
 ### Live seat updates: `GET /api/shows/{id}/events`
 
-`text/event-stream`, public, at most `SSE_MAX_STREAMS` (default 1000) open streams; over that 503. On connect the server sends `retry: 3000` and a `snapshot` event, then:
+`text/event-stream`, public, at most `SSE_MAX_STREAMS` (default 1000) open streams; over that 503. On every connect, including a reconnect with `Last-Event-ID`, the server sends `retry: 3000` and a `snapshot` event, then the seat events below. Seat events carry an `id:` that increases in publish order; `snapshot` and `heartbeat` carry none. A reconnect always gets a fresh snapshot rather than a replay, since the snapshot already holds the full state:
 
 | Event | Data |
 |---|---|
@@ -208,7 +233,7 @@ Booking JSON: `{id, code, status, show:{id, movieTitle, cinemaName, screenName, 
 | `seat-booked` | `{"showId":7,"seats":["C7","C8"]}` |
 | `heartbeat` | `{"ts":"2026-11-20T13:00:15Z"}` every 15 s |
 
-Events are published after the transaction commits and never carry user data. The stream ends when the show starts or is cancelled.
+Events are published after the transaction commits and never carry user data. The stream ends when the show starts or is cancelled: on admin show cancel the live adapter closes every stream for that show.
 
 ### Admin (role A, prefix `/api/admin`)
 
@@ -220,16 +245,36 @@ Events are published after the transaction commits and never carry user data. Th
 | POST /movies, PUT /movies/{id}, DELETE /movies/{id} | DELETE 409 if it has shows |
 | POST /shows, PUT /shows/{id} | overlap check; PUT 409 once any seat is locked |
 | POST /shows/{id}/cancel | section 4; idempotent |
-| GET /reports/shows | `city, from, to, page, size`: page of `{showId, movieTitle, cinemaName, startsAt, capacity, booked, occupancyPercent, revenue, refunded}`; revenue = confirmed amounts minus refunds |
+| GET /reports/shows | `city, from, to, page, size`: page of `{showId, movieTitle, cinemaName, startsAt, status, capacity, booked, occupancyPercent, revenue, refunded}`; revenue = confirmed amounts minus refunds |
 | GET /reports/shows/{id} | the same row plus `byCategory:[{category, capacity, booked, revenue}]` |
 | GET /stats | `{activeHolds, bookingsConfirmedToday, sseStreams}` |
+| GET /users | `q, page, size`: page of `{id, email, name, roles, cinemaIds}` ordered by id; `q` matches email or name (case-insensitive substring) |
+| PUT /users/{id}/roles/{role} | grant `THEATRE_OWNER` or `ADMIN`; 200 the user as in GET /users; 404 unknown user; 422 unknown role; repeating is a no-op |
+| DELETE /users/{id}/roles/{role} | revoke; 200 the user; revoking `THEATRE_OWNER` removes every cinema link; revoking `AUDIENCE` is 422; an admin revoking their own `ADMIN` is 409 `CONFLICT` |
+| PUT /cinemas/{id}/owners/{userId} | link the user to the cinema and grant `THEATRE_OWNER`; 200 the user; 404 unknown cinema or user; repeating is a no-op |
+| DELETE /cinemas/{id}/owners/{userId} | unlink; 200 the user; the role stays; 404 unknown cinema or user |
 
-Admin list views reuse the public GET endpoints. Mutations need an `Idempotency-Key` on POST.
+Admin list views reuse the public GET endpoints. Mutations need an `Idempotency-Key` on POST. A role change reaches the JWT `roles` claim at the next token issue or refresh (at most 15 minutes); cinema links are read per request.
+
+### Theatre owner (role O, prefix `/api/owner`)
+
+Owner routes live under their own prefix instead of reusing the admin routes, so every `/api/admin` route stays admin-only behind one prefix-wide role check and every `/api/owner` route is scoped. The prefix has its own `Auth.requireRole("THEATRE_OWNER", "ADMIN")`. Each use case loads the caller's linked cinemas inside its transaction; anything outside them is 404 `NOT_FOUND`. An ADMIN calling these routes has every cinema in scope. There are no owner routes for cities, movies, cinemas, owner links or roles.
+
+| Method, path | Notes |
+|---|---|
+| GET /cinemas | my cinemas: `[{id, cityId, name, address, screens:[{id, cinemaId, name, capacity, layout}]}]`, ordered by name |
+| POST /cinemas/{id}/screens, PUT /screens/{id} | as the admin routes (layout validated; layout change 409 if future shows exist); 404 outside scope |
+| POST /shows | as the admin route, including the overlap check; 404 when the screen is outside scope |
+| POST /shows/{id}/cancel | section 4, through the same use case and refunds; idempotent; 404 outside scope |
+| GET /reports/shows | as the admin report, filtered to my cinemas |
+| GET /reports/shows/{id} | as the admin report detail; 404 outside scope |
+
+Owner POSTs need an `Idempotency-Key`. Movies and cities come from the public GET endpoints.
 
 ### Ops
 
 - `GET /api/health`: 200 `{"status":"UP","db":"UP"}`, 503 when `SELECT 1` fails.
-- `/_jolt/health` and `/_jolt/metrics` from `app.exposeMetrics(guard)`; the guard requires `Authorization: Bearer <METRICS_TOKEN>`; without `METRICS_TOKEN` metrics are not exposed.
+- `/_jolt/health` and `/_jolt/metrics` from `app.exposeMetrics(guard)`; the guard requires `Authorization: Bearer <METRICS_TOKEN>` on `/_jolt/metrics`; without `METRICS_TOKEN` neither is exposed. `/_jolt/health` includes the `db` check (`app.health`): 200 `{"status":"UP","checks":{"db":"UP"}}`, else 503. Besides Jolt's own series, metrics carry `bms_sse_subscribers`, `bms_sse_dropped_total`, `bms_catalog_cache_*` and `jolt_task_*{task="expiry-sweep"}`.
 - `/_jolt/routes` and `/_jolt/openapi.json` (`app.exposeRoutes()`) only when `JOLT_DEV=1`.
 
 ### Rate limits (429 with `Retry-After`)
@@ -243,25 +288,28 @@ Admin list views reuse the public GET endpoints. Mutations need an `Idempotency-
 
 ## 8. Web UI
 
-Vanilla JS ES modules, no build step, no framework, served from `static/` by `Static.serve("/", dir).spaFallback("index.html")`. Hash-free History API routes:
+React 18 single-page app in `web/` (Vite, strict TypeScript, React Router), built with `npm run build` to `web/dist` and served same-origin by the Java server with `Static.serve("/", STATIC_DIR).spaFallback("index.html")`; there is no Node process at runtime. The Docker image builds the UI in a `node:20-alpine` stage and copies `dist` to `/app/static`. Fingerprinted files under `/assets/` are sent with `Cache-Control: public, max-age=31536000, immutable`; every other static response, `index.html` included, with `no-cache`. `mvn -B verify` does not need Node: tests serve a small fixture from `src/test/resources/static-fixture`. Fonts are self-hosted and bundled; no CDN. In development `npm run dev` proxies `/api` and `/mock-gateway` to `http://localhost:8080`. The server-rendered views link `/css/app.css`, shipped from `web/public`. The UI brand is the fictional Houselights. Hash-free History API routes:
 
 | Route | Page |
 |---|---|
-| `/` | city picker on first visit (remembered in `localStorage`), then the movie grid |
+| `/` | city picker on first visit (remembered in `localStorage`), then a featured-film carousel and the now-showing grid |
 | `/movies` | grid with search box and filter chips (genre, language, certificate, format), date strip for the next 7 days, pagination |
 | `/movies/{id}` | details, then show times grouped by cinema for the chosen city and date, availability badges |
-| `/shows/{id}` | seat map with category legend and prices, live updates over SSE, selection up to 10, sticky summary, "Hold seats" |
+| `/shows/{id}` | seat map with category legend and prices, live updates over SSE, selection up to 10, zoom for large layouts, sticky summary with seats, categories and total; "Hold seats" then shows the hold countdown with "Continue to payment" (creates the booking) and "Release" |
 | `/checkout/{bookingId}` | hold countdown (mm:ss from `expiresAt`, warning under 60 s, expiry message and back link), "Pay" opens the mock gateway |
 | `/bookings` | my bookings with status filter and cancel (shows the refund preview from the rule) |
-| `/bookings/{id}` | booking status; once CONFIRMED, the ticket |
+| `/bookings/{id}` | booking status; once CONFIRMED, a printable ticket rendered from the booking JSON, with the booking code and a decorative code pattern generated in the browser |
 | `/login`, `/register` | forms with inline validation from 422 `errors` |
-| `/admin` | tabs for movies, cinemas and screens (layout JSON editor with a preview), shows and reports |
+| `/owner` | theatre owner dashboard: tabs for my cinemas with their screens and layouts (create and edit, layout JSON editor with a preview), shows (schedule, list, cancel) and reports, all limited to my cinemas |
+| `/admin` | tabs for movies, cinemas and screens (layout JSON editor with a preview), shows, reports and users (search, grant or revoke `THEATRE_OWNER`, assign or unassign cinemas) |
 
-Requirements: semantic HTML; every control keyboard reachable; seats are `button` elements with `aria-label="Row C seat 7, Prime, 250 rupees, available"` and `aria-pressed`; arrow keys move within the map; status is not shown by colour alone (pattern or icon too); countdown in an `aria-live="polite"` region; focus moves to the page heading on route change; WCAG 2.2 AA contrast; light and dark themes from `prefers-color-scheme` plus a toggle; responsive down to 360 px; no inline scripts or styles (CSP). Access token in memory only; the app calls `/api/auth/refresh` on load and on 401.
+Navigation follows the roles in `/api/me`: everyone signed in sees My bookings; `THEATRE_OWNER` also sees My cinemas (`/owner`); `ADMIN` also sees Admin. An audience member sees neither dashboard, and the route guard sends them home. The UI only hides controls; the server is the authority.
+
+Requirements: semantic HTML; every control keyboard reachable; seats are `button` elements with `aria-label="Row C seat 7, Prime, 250 rupees, available"` and `aria-pressed`; arrow keys move within the map; status is not shown by colour alone (pattern or icon too); countdown in an `aria-live="polite"` region; focus moves to the page heading on route change; WCAG 2.2 AA contrast; light and dark themes from `prefers-color-scheme` plus a toggle; responsive down to 360 px; no inline scripts or styles (CSP). Access token in memory only; the app calls `/api/auth/refresh` on load when the browser has signed in before (a non-secret `bms.signedIn` flag in `localStorage`, because the HttpOnly cookie is invisible to scripts and an anonymous refresh would log a 401) and on any 401. Every POST outside `/api/auth` carries an `Idempotency-Key`; problem details are shown with their `requestId`. Films without an https `posterUrl` get poster art generated from the title (the seeded site-relative poster paths have no files behind them).
 
 ## 9. Non-functional
 
-- **Middleware order:** `RequestId.middleware()`, `Logger.requests()`, `SecurityHeaders`, `Compress.gzip()`, IP rate limits, `jwt.middleware()` on protected prefixes, per-user rate limits, `Auth.requireRole("ADMIN")` on `/api/admin`, `Idempotency.keys().required()` on the POST routes in section 5.
+- **Middleware order** (as `web.HttpPipeline#install` runs them): `RequestId.middleware()`, `Logger.requests()`, `SecurityHeaders` (CSP, HSTS on HTTPS), `Problems.middleware()` (maps every `ApiException` and `DomainException` to problem+json), `Compress.gzip()`, per-IP rate limits on login, register and refresh, `Csrf.protect()` on `/api/auth`, then on `/api` the RBAC gate (`web.Rbac#gate`: looks the route up in the permission table, runs `jwt.middleware()` for non-public routes and `Auth.requireRole` for admin and owner routes), the admin and owner layers, the catalog cache clearing after successful writes on `/api/admin` and `/api/owner`, and, when `MOCK_GATEWAY=true`, a per-IP limit plus `Csrf.protect()` on POSTs to `/mock-gateway`. Per route, after the gate: the per-user hold limit on `POST /api/holds`, then `Idempotency.keys().required()` (wrapped by `web.Idempotent`) on the POST routes in section 5.
 - **Security headers:** `SecurityHeaders.defaults().csp("default-src 'self'; img-src 'self' https: data:; frame-ancestors 'none'; form-action 'self'")`; HSTS only when the request is HTTPS.
 - **CORS:** off (no `Cors` middleware); the UI is same-origin.
 - **Request IDs:** `X-Request-Id` accepted or generated, echoed, and included in logs and in problem bodies as `requestId`.
@@ -270,7 +318,7 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 - **Docker:** multi-stage `Dockerfile` (Maven build, then `eclipse-temurin:21-jre`), non-root user, volume `/data` for the database, `HEALTHCHECK` on `/api/health`.
 - **Startup:** fail fast on a missing or short secret, then run migrations, seed the admin, start the sweeper, then listen. Shutdown drains requests, stops the sweeper and closes the pool.
 
-**Environment variables**
+**Environment variables** (read through Jolt's `Config.load()`, so an `application.properties` file may also set them; the environment wins)
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -280,68 +328,90 @@ Requirements: semantic HTML; every control keyboard reachable; seats are `button
 | `JWT_SECRET` | required | at least 32 bytes |
 | `WEBHOOK_SECRET` | required | at least 32 bytes |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | unset | both set: create or keep that admin on start; password at least 12 chars |
-| `HOLD_TTL` | `PT7M` | ISO-8601 duration |
+| `HOLD_TTL` | `PT7M` | ISO-8601 duration, or Jolt's short form such as `7m` (all durations) |
 | `PAYMENT_WINDOW` | `PT5M` | |
 | `MAX_SEATS` | `10` | |
 | `SWEEP_INTERVAL` | `PT30S` | |
 | `SSE_MAX_STREAMS` | `1000` | |
-| `PUBLIC_BASE_URL` | `http://localhost:${PORT}` | checkout URLs and the mock webhook target |
+| `PUBLIC_BASE_URL` | `RENDER_EXTERNAL_URL`, else `http://localhost:${PORT}` | checkout URLs and the mock webhook target; an absolute http(s) URL, trailing slash ignored |
+| `RENDER_EXTERNAL_URL` | unset | set by Render to the service's public URL; read only as the `PUBLIC_BASE_URL` fallback, resolved in `AppConfig`, never in domain code |
 | `MOCK_GATEWAY` | `true` | |
 | `METRICS_TOKEN` | unset | enables `/_jolt/metrics` |
 | `TRUST_PROXY` | unset | comma-separated CIDRs for `JoltConfig.trustProxy` |
-| `STATIC_DIR`, `VIEWS_DIR` | `src/main/resources/static`, `src/main/resources/views` | interim, see jolt#68 |
+| `STATIC_DIR` | `web/dist` | the React build (`npm run build` in `web/`), relative to the working directory; must exist at startup; the Docker image sets `/app/static` |
+| `VIEWS_DIR` | unset: `/views` on the class path | a directory overrides the class path for the ticket and mock-gateway views |
 
 ## 10. Layering
 
-`domain` (entities, rules, ports, `Clock` use) imports only the JDK. `application` (use cases, transaction boundary through a domain `UnitOfWork` port) imports `domain` only. `adapters.db` and `adapters.payment` implement ports with jolt-db and `java.net.http`. `web` holds `RouteModule`s, request/response records and `onError` mappers and imports `application` and `domain`. `Main` is the only class that names concrete adapters. `ArchitectureTest` enforces this.
+**Status: done.** The app is vertical feature slices around a thin hexagon ([ADR and class map](restructure/PLAN.md), [baseline](restructure/BASELINE.md)). The layer-first layout (`domain`, `domain.port`, `application`) is gone.
+
+### Layout
+
+- `features.<slice>` (`catalog`, `live`, `accounts`, `booking`, `payments`, `admin` for owner and admin): each slice owns its routes, request and response types, use cases, SQL and tests. Simple CRUD is a transaction script (route, then SQL through `ports.Db`). Slices MUST NOT import each other or any adapter, and otherwise import only `kernel`, `ports`, `web`, the generated `api.generated` records, Jolt and the JDK; a rule two slices need goes to `kernel`, and SQL MAY be duplicated.
+- `kernel`: pure shared rules and value objects (booking state machine, refund policy, hold and payment transitions, `SeatId`, `BookingCode`, seat layout and show invariants, money in paise). Imports only the JDK, never JDBC.
+- `ports`: only real I/O seams: `Db` (transaction with after-commit callbacks), `PaymentGateway`, `SeatEvents` and `LiveSeats`, `PasswordHasher`, `Ids`, `RefreshTokenStore`, `GatewayCallback`. No port per entity. `java.time.Clock` is the clock. Ports import only `kernel` and the JDK. Idempotency-Key responses go through Jolt's `IdempotencyStore` SPI (adapter `adapters.db.SqlIdempotency`) and webhook signatures through Jolt's `Webhooks`; being Jolt types, neither is a port.
+- `adapters.<seam>`: one adapter per port. Adapters never import `web` or `features`.
+- `web`: shared HTTP plumbing only (problem+json, RBAC gate and `Permissions`, principal, paging, Idempotency-Key, the public catalog cache, the middleware pipeline). `WebModules` is the route table: the one `web` class that names slices, mounting each with only the ports it uses.
+- `Main` is the composition root and the only class that names adapters.
+- Wire types are generated from `api/openapi.yaml` (Java records and TypeScript types); shared shapes such as the seat map come from there, not from another slice.
+
+### Guardrails
+
+These replace line-by-line review; a change is done when all are green in `mvn -B verify`:
+
+- `TargetArchitectureTest`: the dependency rules above, each proven by a fixture that breaks it and by a copy of the real tree with one bad import per rule. It also checks that every slice class that opens a transaction is tested on a migrated SQLite.
+- Port contract tests (`dev.thiru.bms.contract`): one suite per port, run against the real adapter and the test fakes.
+- `RbacMatrixTest`: registered routes, `Permissions` and `docs/RBAC.md` agree.
+- `ApiCoverageTest` and `ApiSchemaTest`: `api/openapi.yaml` has exactly the RBAC routes, and every live JSON response, problem and SSE payload matches it.
+- `RecordGeneratorTest`: generated records compile and match the records the server serialises.
+- `EndToEndTest`: the booking and owner journeys on real adapters over a socket.
 
 ## 11. Jolt features used
+
+Jolt `v0.4.1` (`jolt.version` in `pom.xml`).
 
 | Requirement | Jolt API |
 |---|---|
 | Routing, modules, typed handlers | `Jolt.create`, `app.module`, `RouteModule`, `Router`, `Reply`, `Params` |
-| Error mapping, problem+json | `app.onError`, `JoltConfig.problemJson(true)`, `HttpException` |
-| Validation | `Validate.with`, `Rules`, `Validate.check` |
-| Typed params | `req.param(name, Long.class)`, `req.query(name, type, default)` |
+| Error mapping, problem+json | `app.onError(Type, (e, req) -> ...)`, `JoltConfig.problemJson(true)`, `HttpException` (Jolt adds `requestId`) |
+| Validation | `Validate.check`, `Validator`, `Rules` (`each`, `nested`) |
+| Typed and repeated params | `req.param(name, Long.class)`, `req.query(name, type, default)`, `req.queryAll` |
+| Pagination envelope | `Page`, `Page.Result` |
+| Configuration | `Config.load()` |
 | Auth | `JwtAuth.hs256`, `RefreshTokens` with a SQLite `RefreshStore`, `PasswordHasher`, `Auth.requireRole` |
 | CSRF on cookie routes | `Csrf.protect()` |
 | Hardening | `SecurityHeaders`, `RateLimit.perIp/perKey`, `RequestId`, `Logger.requests()`, `JoltConfig.fromEnv` |
-| Caching and size | `res.json(x).etag()`, `res.cache(Duration)`, `res.noStore()`, `Compress.gzip()` |
-| UI and ticket | `Static.serve(...).spaFallback`, `app.views`, `res.render` |
-| Live seats | `res.sse()`, `EventStream.event/comment/retry`, `config.streamTimeouts` |
-| Persistence | `Db.open`, `query`, `queryOne`, `update`, `inTransaction` |
-| Ops | `app.exposeMetrics(guard)`, `app.exposeRoutes()`, `app.openApi()`, `Server.closeOnShutdown()` |
-| Tests | `JoltTest.of(app)`, `session()`, `jsonEquals`, `app.listen(0)` for socket tests |
-| From v0.4.0 | `req.queryAll`, `app.onStart/onStop/lifecycle`, `Idempotency.keys()`, `Migrations.runClasspath`, `TxMode.IMMEDIATE`, `insert`, `batch`, `tx.updateExpecting` |
+| Idempotency-Key | `Idempotency.keys().store(...).required()` with a SQLite `IdempotencyStore` |
+| Webhook signatures | `Webhooks.hmacSha256(secret, "Bms-Signature").prefix("v1=").timestampHeader("Bms-Timestamp")` |
+| Caching and size | `res.json(x).etag()`, `res.cache(Duration)`, `res.noStore()`, `TtlCache`, `Compress.gzip()` |
+| UI and ticket | `Static.serve("/", STATIC_DIR).spaFallback` with `Cache-Control` per path, `app.viewsClasspath` (or `app.views` when `VIEWS_DIR` is set), `res.render` |
+| Live seats | `Hub` (`subscribe`, `publish`, `metrics`), `res.sse()`, `EventStream.event(id, name, data)`, `retry`, `config.streamTimeouts` |
+| Persistence | `Db.open`, `query`, `queryOne`, `update`, `insert`, `batch`, `inTransaction(TxMode.IMMEDIATE, ...)`, `busyTimeout` |
+| Background work and lifecycle | `app.every`, `app.onStop` |
+| Ops | `app.exposeMetrics(guard)`, `app.health`, `app.metrics()`, `app.exposeRoutes()`, `app.openApi()` |
+| Tests | `JoltTest.of(app)`, `session()`, `jsonEquals`, `maxEvents`, `timeout`, `events()`, `app.listen(0)` for socket tests |
 
 ## 12. Known gaps
 
-Each interim workaround lives behind an adapter or a single class, carries `TODO(jolt#N)` and has a row in `docs/JOLT_GAPS.md`. It is deleted when the fix ships.
+Every Jolt gap from #52 to #77 is fixed in v0.4.1 and its workaround removed; `docs/JOLT_GAPS.md` records how each was replaced. What remains is listed there with a reason:
 
-| Requirement | Jolt issue | Interim workaround |
+| Requirement | Jolt | What the app still does |
 |---|---|---|
-| Repeated query params | #52 `req.queryAll` | accept comma lists only; the UI sends comma lists |
-| Start/stop hooks | #53 lifecycle | `Main` starts the sweeper before `listen` and stops it in a shutdown hook |
-| Idempotency-Key | #54 `Idempotency` | `web.IdempotencyFilter` over an `idempotency_key` table |
-| Migrations | #55 `Migrations` | `adapters.db.SchemaRunner` applying classpath `V<n>__*.sql` into `schema_history` |
-| IMMEDIATE tx, generated keys, batch, optimistic update | #56 | JDBC URL `?transaction_mode=IMMEDIATE`; `SELECT last_insert_rowid()`; row-count check that throws a domain `VersionConflict` |
-| Pagination | #57 `Page` | `web.PageRequest` and `web.PageResult` records |
-| Sweeper | #58 scheduler | `ScheduledExecutorService` on one virtual-thread factory |
-| Webhook signatures | #59 | `adapters.payment.HmacVerifier` (also signs for the mock gateway) |
-| Config | #60 loader | `AppConfig.fromEnv()` record |
-| Nested validation | #61 | manual loops emitting `rows[i].field` keys |
-| Fan-out to SSE viewers | #62 hub | `adapters.live.SeatEvents` with a bounded queue per subscriber |
-| Cache | #63 | not needed in v1 (ETag is enough) |
-| Static files and views from the jar | #68 | serve `STATIC_DIR`/`VIEWS_DIR` from the filesystem; Docker copies them to `/app` |
-| SSE in `JoltTest` | #69 | SSE tests over a real loopback socket (`app.listen(0)` and `HttpClient`) |
-| SSE event ids, `Last-Event-ID` | #70 | send a full `snapshot` on every (re)connect |
-| App metrics and health checks | #71 | `GET /api/health` with a DB check, `GET /api/admin/stats` |
+| Migrations | `Migrations` (#55) keeps its own history table | `adapters.db.SchemaRunner` stays, so databases it already migrated keep working |
+| Paging errors | `Page.of` answers 400 without the field and caps `size` | `web.Paging` checks `page` and `size` and answers 422 with `errors.page`/`errors.size` |
+| Idempotency errors | `Idempotency` writes plain-text 400/409/422 and replays the first request's `X-Request-Id` | `web.Idempotent` re-throws them as problem+json `IDEMPOTENCY` and keeps the current request id |
+| Expected errors in the log | mapped non-`HttpException` errors are logged at WARNING with a stack trace | `web.Problems.middleware` turns domain errors into `HttpException`s and logs unexpected ones by class and request id |
+| SSE snapshot and shutdown | `Hub.sse` cannot send a snapshot first; nothing ends a topic's subscribers | `adapters.live.LiveSeatHub` subscribes and the route writes SSE itself; `Main` ends streams before the drain |
+| Health URL | checks run only behind `/_jolt/health` | `GET /api/health` keeps its shape for Render on the same DB check |
+| UI from the jar | `Static.classpath` exists | the React build is served from `STATIC_DIR` (`web/dist`, `/app/static` in Docker) because Node builds it outside Maven; only the views use the class path |
+| Webhook signing for the mock gateway | verification only | `adapters.payment.WebhookSigner` |
 
 ## 13. Test plan (per lane)
 
 - Domain: layout validation, overlap rule, refund boundaries (24 h, 4 h, start), state transitions table-driven.
 - Repositories: one contract test per port, run against SQLite in a temp file.
 - API: `JoltTest` for every endpoint, including each error `code`.
+- RBAC: anonymous gets 401 on every protected route; an audience member 403 on every owner and admin route; a theatre owner 403 on every admin route and 404 on another owner's cinema, screen, show and report; an admin passes every route and cannot remove their own `ADMIN`. `RbacMatrixTest` keeps the routes, `web.Permissions` and `docs/RBAC.md` in step.
 - Concurrency: 200 virtual-thread buyers on overlapping seats; booked seats never exceed capacity and no seat is booked twice; every hold ends CONSUMED, RELEASED or EXPIRED.
 - Webhook: valid, tampered body, wrong secret, stale timestamp, duplicate event id, success after expiry (refund).
-- End to end on a socket: register, search, hold, book, checkout, webhook, ticket, cancel, SSE events.
+- End to end on a socket: register, search, hold, book, checkout, webhook, ticket, cancel, SSE events; an admin promotes a user and links a cinema, the owner schedules a show there, an audience member books it, the owner sees the sale in their report and gets 404 on another cinema.

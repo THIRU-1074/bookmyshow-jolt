@@ -1,0 +1,27 @@
+# Render Blueprint: one free Docker web service serving the UI and the API.
+# The free plan has an ephemeral disk, so the SQLite database resets on each deploy or restart.
+services:
+  - type: web
+    name: bookmyshow-jolt
+    runtime: docker
+    plan: free
+    branch: integration
+    healthCheckPath: /api/health
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      # Optional: prompted once when the Blueprint is created. Set both (password at least 12
+      # characters) or leave both empty; setting only one fails startup on purpose.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Render's load balancer connects from private addresses; trust its X-Forwarded-* headers so
+      # rate limits key on the real client and HTTPS is detected (Secure cookies, HSTS). Jolt folds
+      # an IPv4-mapped peer (::ffff:10.x) to IPv4, so the IPv4 blocks cover it; fc00::/7 covers an
+      # IPv6 unique-local peer. AppConfigTest parses this exact value. The first request's peer
+      # and trust decision are logged once per boot ("First request: ...").
+      - key: TRUST_PROXY
+        value: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
