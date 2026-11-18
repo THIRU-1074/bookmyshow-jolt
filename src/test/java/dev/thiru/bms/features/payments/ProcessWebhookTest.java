@@ -192,12 +192,70 @@ class ProcessWebhookTest {
     }
 
     @Test
-    void aLateSuccessForAFailedAttemptChangesNothing() {
+    void aLateSuccessForAFailedAttemptRefundsInFullAndLeavesTheBookingRetryable() {
         webhook.execute(event("e1", Type.PAYMENT_FAILED, 36000, "INR"));
+        long version = flow.version(booking);
+        kit.events().published.clear();
+
         Result r = webhook.execute(ok("e2"));
-        assertEquals(BookingStatus.HELD, r.bookingStatus());
+
+        assertEquals(Kind.PROCESSED, r.kind());
+        assertEquals(BookingStatus.HELD, r.bookingStatus(), "the booking is untouched");
+        assertEquals(version, flow.version(booking));
+        assertEquals("REFUNDED", flow.paymentStatus(payment));
+        assertEquals(36000, flow.refunded(payment));
+        assertEquals(List.of("gw_" + payment + ":36000"), kit.gateway().refunds);
+        assertEquals(List.of("A2:HELD:set", "B1:HELD:set"), flow.locks(), "seats still held");
+        assertTrue(kit.events().published.isEmpty(), "no seat event: nothing changed for viewers");
+    }
+
+    @Test
+    void aSecondSuccessEventForTheSamePaymentNeverRefundsTwice() {
+        webhook.execute(event("e1", Type.PAYMENT_FAILED, 36000, "INR"));
+        webhook.execute(ok("e2"));
+        Result again = webhook.execute(ok("e3")); // a different event id for the same payment
+        assertEquals(Kind.PROCESSED, again.kind());
+        assertEquals(1, kit.gateway().refunds.size());
+        assertEquals("REFUNDED", flow.paymentStatus(payment));
+        assertEquals(36000, flow.refunded(payment));
+    }
+
+    @Test
+    void redeliveringTheLateSuccessEventRefundsOnce() {
+        webhook.execute(event("e1", Type.PAYMENT_FAILED, 36000, "INR"));
+        webhook.execute(ok("e2"));
+        assertEquals(Kind.DUPLICATE, webhook.execute(ok("e2")).kind());
+        assertEquals(1, kit.gateway().refunds.size());
+    }
+
+    @Test
+    void aSuccessForAPaymentAlreadySucceededOrRefundedRefundsNothing() {
+        webhook.execute(ok("e1"));
+        webhook.execute(ok("e2"));
+        assertEquals("SUCCEEDED", flow.paymentStatus(payment));
+        assertTrue(kit.gateway().refunds.isEmpty());
+        assertEquals("CONFIRMED", flow.bookingStatus(booking));
+    }
+
+    @Test
+    void aLateSuccessWithTheWrongAmountIsStillAMismatchAndRefundsNothing() {
+        webhook.execute(event("e1", Type.PAYMENT_FAILED, 36000, "INR"));
+        Result r = webhook.execute(event("e2", Type.PAYMENT_SUCCEEDED, 1, "INR"));
+        assertEquals(Kind.AMOUNT_MISMATCH, r.kind());
         assertEquals("FAILED", flow.paymentStatus(payment));
         assertTrue(kit.gateway().refunds.isEmpty());
+    }
+
+    @Test
+    void aFailingRefundOfALateSuccessRollsBackSoRedeliveryWorks() {
+        webhook.execute(event("e1", Type.PAYMENT_FAILED, 36000, "INR"));
+        kit.gateway().failRefunds = true;
+        assertThrows(IllegalStateException.class, () -> webhook.execute(ok("e2")));
+        assertEquals("FAILED", flow.paymentStatus(payment));
+        kit.gateway().failRefunds = false;
+        assertEquals(Kind.PROCESSED, webhook.execute(ok("e2")).kind());
+        assertEquals("REFUNDED", flow.paymentStatus(payment));
+        assertEquals(1, kit.gateway().refunds.size());
     }
 
     @Test

@@ -66,6 +66,7 @@ Ownership rules: a theatre owner's scope is the set of cinemas linked to them in
 | PAYMENT_PENDING | CONFIRMED | webhook `payment.succeeded` | gateway | unexpired, every seat lock still owned by this booking, amount matches; locks become BOOKED |
 | PAYMENT_PENDING | HELD | webhook `payment.failed` | gateway | unexpired; payment FAILED; the user may check out again. A success webhook whose amount or currency does not match also marks the payment FAILED and returns the booking to HELD (422 to the caller) |
 | HELD, PAYMENT_PENDING | EXPIRED | sweeper or lazy check | system | now >= expiresAt; locks deleted; a success webhook arriving after expiry or cancellation marks the payment SUCCEEDED then REFUNDED in full (refundedAmount = amount) |
+| (payment FAILED) | (booking unchanged) | webhook `payment.succeeded` for a payment already FAILED | gateway | the gateway captured money for an attempt we had closed: the payment is marked SUCCEEDED then REFUNDED in full through the gateway in the same transaction; the booking, its status and its seat locks are untouched (a HELD booking stays retryable) and no seat event is published. Amount and currency are checked first as always. A success for a payment already SUCCEEDED or REFUNDED is a no-op, so a second event id never refunds twice |
 | HELD | CANCELLED | `POST /api/bookings/{id}/cancel` | owner | locks deleted; no payment exists. Cancelling a booking whose expiresAt has passed but which the sweeper has not yet marked EXPIRED is 409 `BOOKING_STATE` |
 | PAYMENT_PENDING | (none) | cancel | owner | 409 `PAYMENT_IN_PROGRESS` |
 | CONFIRMED | REFUNDED or CANCELLED | cancel | owner | before show start only (below); locks deleted |
@@ -218,7 +219,7 @@ Booking JSON: `{id, code, status, show:{id, movieTitle, cinemaName, screenName, 
 - `POST /api/payments/webhook` (public, verified by signature):
   - headers `Bms-Timestamp: <unix seconds>`, `Bms-Signature: v1=<hex HMAC-SHA256(WEBHOOK_SECRET, timestamp + "." + rawBody)>`;
   - body `{eventId, type: "payment.succeeded"|"payment.failed", paymentId, gatewayRef, amount, currency, occurredAt}`;
-  - 401 on a missing or bad signature (constant-time compare) or a timestamp more than 300 s from now; 200 `{"duplicate":true}` for a seen `eventId`; 422 on amount or currency mismatch (payment marked FAILED and the booking returned to HELD); 200 `{"status": "<booking status>"}` otherwise.
+  - 401 on a missing or bad signature (constant-time compare) or a timestamp more than 300 s from now; 200 `{"duplicate":true}` for a seen `eventId`; 422 on amount or currency mismatch (payment marked FAILED and the booking returned to HELD); 200 `{"status": "<booking status>"}` otherwise. A `payment.succeeded` for a payment already FAILED is refunded in full (section 4) and answers 200 with the unchanged booking status; if the refund call fails the transaction rolls back, the answer is 500 and a redelivery is processed afresh.
 
 ### Live seat updates: `GET /api/shows/{id}/events`
 

@@ -12,7 +12,7 @@ SQLite has one writer. `SqliteDb` opens every slice transaction with `BEGIN IMME
 |---|---|---|
 | `features.booking.Checkout` | `createSession` | the `payment` row stores the session's `gateway_ref` |
 | `features.booking.CancelBooking` | `refund` | a failed refund must roll the cancel back |
-| `features.payments.ProcessWebhook` | `refund` (late success: booking expired, cancelled, lost its seats) | a failed refund must roll the event back, so the gateway redelivers it |
+| `features.payments.ProcessWebhook` | `refund` (late success: booking expired, cancelled, lost its seats, or the payment was already FAILED) | a failed refund must roll the event back, so the gateway redelivers it |
 | `features.admin.CancelShow` | `refund` per confirmed booking | same as cancel |
 
 Today the only gateway is `MockPaymentGateway`. It answers in microseconds, never does I/O, and never fails for a valid amount. Keeping the calls inside the transaction gives a simple, testable rule: either the state change and the money movement both happen, or neither does. `PaymentGatewayContract.aFailedRefundThrowsSoTheCallersTransactionRollsBack` now pins the half of that rule the gateway owns.
@@ -42,6 +42,10 @@ Do **not** wire a real gateway this way.
 - New schema: a migration for `payment_command` and the new payment states.
 - `PaymentGateway.refund` gains an idempotency key, and `PaymentGatewayContract` gains a clause that the same key never refunds twice.
 - The rule "a failed refund rolls the state back" is replaced by "a failed refund leaves a visible pending or failed command". `aFailedRefundThrows...` stays, because the dispatcher still needs a failure to be an exception.
+
+## Note: late success after a failed attempt
+
+A `payment.succeeded` for a payment already marked `FAILED` now refunds in full inside the transaction, like the other late successes (the payment goes `FAILED` to `SUCCEEDED` to `REFUNDED`; the booking is untouched). It uses the same refund call, so everything above applies to it: with a real gateway this refund also moves to the outbox as a `REFUND` command.
 
 ## Not done here
 

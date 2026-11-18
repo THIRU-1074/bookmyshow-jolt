@@ -40,6 +40,15 @@ public record Payment(
         return with(PaymentStatus.SUCCEEDED, refundedAmount, now);
     }
 
+    /**
+     * The gateway reports a success for an attempt we had already closed as FAILED: the money was
+     * captured after all. Only the caller that is about to refund it in full uses this.
+     */
+    public Payment succeedAfterFailure(Instant now) {
+        requireStatus(PaymentStatus.FAILED);
+        return with(PaymentStatus.SUCCEEDED, refundedAmount, now);
+    }
+
     public Payment fail(Instant now) {
         requireStatus(PaymentStatus.INITIATED);
         return with(PaymentStatus.FAILED, refundedAmount, now);

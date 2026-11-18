@@ -107,8 +107,18 @@ public final class ProcessWebhook {
     }
 
     private Booking succeed(Tx tx, Payment payment, Booking booking, Instant now) {
+        if (payment.status() == PaymentStatus.FAILED) {
+            // We closed this attempt, yet the gateway captured the money: refund it in full. The
+            // booking is untouched (a HELD booking stays retryable with a new attempt). The
+            // payment is REFUNDED afterwards, so a second success event id lands in the no-op
+            // branch below and can never refund twice.
+            Payment captured = payment.succeedAfterFailure(now);
+            gateway.refund(captured.gatewayRef(), captured.amount());
+            PaymentSql.updatePayment(tx, captured.refund(captured.amount(), now));
+            return booking;
+        }
         if (payment.status() != PaymentStatus.INITIATED) {
-            return booking; // a late success for an attempt already failed or settled
+            return booking; // SUCCEEDED or REFUNDED already: nothing more to do, nothing to refund
         }
         Payment succeeded = payment.succeed(now);
         if (booking.status() == BookingStatus.PAYMENT_PENDING) {

@@ -191,6 +191,21 @@ class PaymentRoutesTest {
                 kit.events().of(SeatEvent.Released.class));
     }
 
+    /** The review's reproduction: payment.failed, then payment.succeeded for one payment. */
+    @Test
+    void paymentFailedThenPaymentSucceededRefundsTheCustomerOverHttp() {
+        String[] p = flow.pending(ada, "A2", "A3");
+        flow.webhook("f1", "payment.failed", p[1], 36000).expect(200).jsonEquals("status", "HELD");
+        flow.webhook("s1", "payment.succeeded", p[1], 36000)
+                .expect(200)
+                .jsonEquals("status", "HELD");
+        assertEquals("REFUNDED", flow.paymentStatus(p[1]));
+        assertEquals(36000, flow.refunded(p[1]));
+        assertEquals("HELD", flow.bookingStatus(p[0]), "still retryable");
+        flow.webhook("s2", "payment.succeeded", p[1], 36000).expect(200);
+        assertEquals(List.of("gw_" + p[1] + ":36000"), kit.gateway().refunds, "one refund only");
+    }
+
     @Test
     void mockGatewayPageAndCompletion() {
         String[] p = flow.pending(ada, "A2");
