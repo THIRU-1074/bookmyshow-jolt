@@ -18,3 +18,9 @@
 7. **Tell the main session at once.** Right after filing, `SendMessage` to `main` with the issue number and one line on the workaround. Do not wait until your task ends.
 8. **Commits.** Atomic Conventional Commits (`feat:`, `fix:`, `test:`, `docs:`, `build:`, `ci:`, `refactor:`). Never push to `main`; never use `git stash`; never skip hooks. End messages with the attribution line the session gives you.
 9. **Style.** No emojis. Comments explain why, not what. Money in paise as `long`; time through `Clock`; secrets only from env.
+10. **ERD.** Any change to a table, column, constraint, index, migration or kernel entity MUST update [docs/ERD.md](docs/ERD.md) in the same commit: the Mermaid diagram, the table notes and the kernel mapping. `ErdDriftTest` enforces it for tables, columns, types, keys, nullability, unique indexes and relationships by comparing the diagram with a freshly migrated database; it prints every difference. To see the expected listing run `mvn -q test -Dtest=ErdDriftTest#printExpectedErd -Derd.print=true`.
+11. **Design docs.** A change to how seat contention, holds, payments, idempotency, live updates or caching are kept correct MUST update docs/SYSTEM_DESIGN.md in the same commit; `DesignDocPointersTest` fails on pointers to code or tests that no longer exist.
+
+## Definition of done
+
+A schema or entity change is done only with all three: a new migration (never an edit of an applied one), an updated `docs/ERD.md`, and a green `ErdDriftTest` inside a green `mvn -B verify`.
