@@ -227,7 +227,7 @@ sequenceDiagram
 
 - The refund is a gateway call made **inside** the write transaction. That is acceptable only for the mock gateway; with a real gateway it holds the writer lock for a network round trip and its rollback cannot undo money the provider already moved. This is ADR 0002, summarised in problem 14.
 - **Late success after a failed attempt is refunded.** A success event for a payment already `FAILED` (a timeout reported as failed and settled later, or an amount-mismatch failure whose money the gateway still took) means money was captured for an attempt we had closed. `features.payments.ProcessWebhook#succeed` marks it `SUCCEEDED` then `REFUNDED` in full through the gateway, inside the transaction, and leaves the booking and its locks alone (a `HELD` booking stays retryable). A success for a payment already `SUCCEEDED` or `REFUNDED` is a no-op, so a second event id can never refund twice. An event whose amount or currency does not match is still a mismatch (422) and refunds nothing, because the amount cannot be trusted. Proof: `features.payments.ProcessWebhookTest#aLateSuccessForAFailedAttemptRefundsInFullAndLeavesTheBookingRetryable`, `features.payments.ProcessWebhookTest#aSecondSuccessEventForTheSamePaymentNeverRefundsTwice`, `features.payments.ProcessWebhookTest#redeliveringTheLateSuccessEventRefundsOnce`, `features.payments.ProcessWebhookTest#aFailingRefundOfALateSuccessRollsBackSoRedeliveryWorks`, and over HTTP `features.payments.PaymentRoutesTest#paymentFailedThenPaymentSucceededRefundsTheCustomerOverHttp`.
-- Redelivery: if the refund throws, the whole transaction, including the event-id row, rolls back and the webhook answers 500, so a gateway that retries will redeliver and succeed (`features.payments.ProcessWebhookTest#failedGatewayRefundRollsBackSoTheEventCanBeRedelivered`). The in-repo mock sender does **not** retry, so redelivery is a property of the receiver that no sender in this repo exercises end to end.
+- Redelivery: if the refund throws, the whole transaction, including the event-id row, rolls back and the webhook answers 500, so a gateway that retries will redeliver and succeed (`features.payments.ProcessWebhookTest#failedGatewayRefundRollsBackSoTheEventCanBeRedelivered`). The redelivery is also tested over HTTP (`features.payments.PaymentRoutesTest#aFailedFirstDeliveryRollsBackAndTheRedeliveryAppliesOnceWithNoDuplicateEffects`), but the in-repo mock sender does **not** retry, so no real sender in this repo drives it.
 
 ## 4. Payment idempotency and exactly-once webhooks
 
@@ -263,6 +263,7 @@ sequenceDiagram
 - `adapters.db.SqlIdempotencyTest#firstUseStartsThenInFlightUntilCompletedThenReplays`, `adapters.db.SqlIdempotencyTest#differentRequestUnderTheSameKeyIsAMismatch`, `adapters.db.SqlIdempotencyTest#releaseForgetsAnInFlightClaimButNotAStoredResponse`, `adapters.db.SqlIdempotencyTest#purgeDropsKeysOlderThanTheCutoff`.
 - `features.payments.ProcessWebhookTest#duplicateEventHasNoSideEffects`: a second delivery leaves the booking version unchanged, publishes nothing and refunds nothing.
 - `features.payments.PaymentRoutesTest#successConfirmsADuplicateReplaysAndTheTicketIsServed`: the duplicate over HTTP.
+- `features.payments.PaymentRoutesTest#aFailedFirstDeliveryRollsBackAndTheRedeliveryAppliesOnceWithNoDuplicateEffects`: the first delivery fails (the refund throws, answer 500, nothing recorded), the redelivery of the same event id succeeds, and a third is a duplicate; one refund, one release, one event row.
 - `features.payments.PaymentRoutesTest#webhookRejectsBadSignaturesAndMismatchedAmounts`: forged signature, missing signature, tampered body, timestamp 301 s stale and 301 s in the future are all 401; exactly 300 s off still reaches validation (422); an amount of 1 paise marks the payment `FAILED`.
 - `adapters.payment.WebhookSignerTest#joltsWebhookCheckAcceptsOnlyAFreshCorrectSignature`: the signer and Jolt's verifier agree, and a wrong secret or a body with one extra space is refused.
 - `features.payments.ProcessWebhookTest#amountMismatchFailsThePayment` and `features.payments.ProcessWebhookTest#currencyMismatchFailsThePayment`.
@@ -422,11 +423,12 @@ sequenceDiagram
 - `adapters.live.LiveSeatHubTest#subscribersOnlySeeTheirShow`, `adapters.live.LiveSeatHubTest#streamCapAndCloseAreReflectedInOpenStreams`, `adapters.live.LiveSeatHubTest#publishingWithNoSubscribersIsANoOp`, `adapters.live.LiveSeatHubTest#heldEventsBecomeSeatHeldMessages`.
 - `features.live.LiveRoutesTest#streamStartsWithRetryAndSnapshotThenForwardsEventsAndHeartbeats`: `retry: 3000`, then the snapshot (with no id), then the forwarded event with its id, then a heartbeat.
 - `features.live.LiveRoutesTest#unknownShowIs404AndAFullHubIs503`, `features.live.LiveRoutesTest#theStreamEndsWhenTheShowStarts`, `features.live.LiveRoutesTest#aCancelledShowGetsOnlyTheSnapshot`, `features.live.LiveRoutesTest#aStartedShowGetsOnlyTheSnapshot`.
+- `features.live.SubscribeBeforeSnapshotTest#anEventPublishedBetweenSubscriptionAndSnapshotIsStillDelivered`: an event published between subscribe and snapshot is delivered.
 - `features.booking.CreateHoldTest#eventsArePublishedOnlyAfterTheCommit` and `features.booking.CreateHoldTest#aFailingSubscriberDoesNotFailTheHold`: a subscriber that reads the database already sees the hold, and a throwing subscriber does not fail the hold.
 
 **Trade-offs and limits.**
 
-- **The subscribe-before-snapshot ordering is a documented design, visible in `LiveRoutes#stream`, but no test forces the interleaving** (an event published between subscribe and snapshot). The route tests use a fake hub and push after subscription.
+- **The subscribe-before-snapshot ordering is now forced by a test**: the database handed to the route publishes an event the moment the snapshot read begins and records that a subscription already existed; the event still reaches the client after the snapshot (`features.live.SubscribeBeforeSnapshotTest#anEventPublishedBetweenSubscriptionAndSnapshotIsStillDelivered`). The seam is the route's `Db` and the fake hub, no production change. If the route took the snapshot first, the subscription count would be 0 and the test would fail.
 - **`Last-Event-ID` is ignored.** Event ids exist and increase, but nothing replays on reconnect; correctness comes from the fresh snapshot. A client that was dropped sees a full refresh, not a gap-fill.
 - Fan-out is in-process memory. With more than one node each node only knows its own subscribers and its own commits, so a seat held on node A is not pushed to viewers on node B (see [Scaling beyond one node](#scaling-beyond-one-node)).
 - Each stream is an open connection for its whole life; `SSE_MAX_STREAMS` is the cap and 503 the signal.
@@ -458,6 +460,7 @@ sequenceDiagram
 **Proof.**
 
 - `web.CatalogCacheTest#citiesAreCachedForAMinute`: a second read inside the TTL does not reach the database; it does after a minute.
+- `features.catalog.CatalogStampedeTest#twoHundredConcurrentMissesForOneKeyRunTheLoaderOnce`: the stampede guarantee through `CatalogRoutes` and the pipeline's `CatalogCache`.
 - `web.CatalogCacheTest#cachedReadsKeepTheirEtagAndCacheControl`, `web.CatalogCacheTest#failedReadsAreNotCached`.
 - `web.CatalogCacheTest#anAdminCatalogWriteClearsTheCache` and `web.CatalogCacheTest#anOwnerShowCancelClearsTheShowListing`.
 - `features.admin.AdminRoutesTest#successfulWritesClearThePublicCatalogCacheAndFailedOnesDoNot`.
@@ -467,7 +470,7 @@ sequenceDiagram
 
 **Trade-offs and limits.**
 
-- **The single-flight (stampede) property is Jolt's behaviour, stated in its `TtlCache` documentation, and no test in this repository exercises it.** The repo tests prove caching, expiry, error non-caching and invalidation, not that 1000 concurrent misses run one loader.
+- **The single-flight (stampede) property is Jolt's behaviour, and it is now exercised through this repository's wiring**: 200 virtual threads miss one key at once while the loader is held open, and the loader runs once; the same test pointed at an uncached route runs it 200 times, so the concurrency is real (`features.catalog.CatalogStampedeTest#twoHundredConcurrentMissesForOneKeyRunTheLoaderOnce`).
 - Holds and bookings do not clear the cache: a listing's availability badge may lag by up to a minute. The seat map, which is exact, is never cached.
 - The cache is per process. A write on one node does not clear another node's cache (see [Scaling beyond one node](#scaling-beyond-one-node)).
 - The seat map `version` is a 32-bit hash of the status list. It is not a counter: two different maps can in theory collide. The `ETag` is computed over the whole response body, so a collision in `version` alone does not cause a wrong 304.
@@ -620,11 +623,12 @@ Also, treating a show as ending when the film ends ignores the 15-minute cleanin
 - `kernel.catalog.CatalogTest#showsOnOneScreenMustNotOverlapButMayTouch`, `kernel.catalog.CatalogTest#overlapIgnoresCancelledShowsAndTheShowItself`, `kernel.catalog.CatalogTest#showOccupiesDurationPlusFifteenMinutes`.
 - `features.admin.AdminCatalogTest#showCreateChecksOverlapPricesLanguageAndFuture`: the overlap error names `startsAt`.
 - `features.admin.OwnerRoutesTest#showsAreScheduledWithTheOverlapRuleAndCancelledWithRefunds` and `features.admin.AdminRoutesTest#movieAndShowValidation`.
+- `features.admin.ShowOverlapRaceTest#twoSchedulersRacingForOverlappingSlotsExactlyOneWins`: the concurrent race.
 - `adapters.db.SeedTest#showsNeverOverlapOnAScreen`: the seed data obeys the rule.
 
 **Trade-offs and limits.**
 
-- **There is no database constraint for overlap.** The guarantee is the in-transaction check plus the single writer. No test races two concurrent schedulers. On Postgres the right fix is an exclusion constraint (`EXCLUDE USING gist (screen_id WITH =, tstzrange(starts_at, ends_at) WITH &&)`), which makes the database the arbiter.
+- **There is no database constraint for overlap.** The guarantee is the in-transaction check plus the single writer, and it is now raced: two schedulers start together for overlapping slots on one screen, fifteen rounds, and exactly one wins each round while the other gets the overlap error and the database holds one show (`features.admin.ShowOverlapRaceTest#twoSchedulersRacingForOverlappingSlotsExactlyOneWins`). On Postgres the right fix is an exclusion constraint (`EXCLUDE USING gist (screen_id WITH =, tstzrange(starts_at, ends_at) WITH &&)`), which makes the database the arbiter.
 - Moving or cancelling a show with held seats is limited: the layout of a screen is locked while future shows exist and a show update is refused once a seat is locked (`features.admin.AdminCatalogTest#showUpdateIsRefusedOnceASeatIsLockedOrTheShowIsCancelled`).
 
 ## 13. Money and time correctness
@@ -658,11 +662,12 @@ Also, treating a show as ending when the film ends ignores the 15-minute cleanin
 - `adapters.db.SchemaTest#everyTableIsStrict`, `adapters.db.SchemaTest#strictTablesRejectWrongTypes`, `adapters.db.SchemaTest#refundCannotExceedPaymentAmount`.
 - `features.booking.CreateHoldTest#holdsSeatsLocksThemAndPricesOnTheServer`: 18000 + 28000 paise computed on the server.
 - `contract.DbContract#instantsAreStoredAsEpochMillis` (run by `adapters.db.SqliteDbContractTest`).
+- `TargetArchitectureTest#wallClockCallsOutsideMainAreCaught` (a fixture with `Instant.now()`, `LocalDate.now(zone)`, `System.currentTimeMillis()` and `Clock.systemUTC()` outside `Main`), `TargetArchitectureTest#mainIsTheOnlyPlaceThatCreatesTheSystemClock` and `TargetArchitectureTest#aWallClockCallInARealSliceIsCaught` (a real slice with one call injected), plus `TargetArchitectureTest#productionSourcesFollowTheTargetRules` on the real tree.
 - The expiry and refund tests above all advance a `MutableClock` instead of sleeping, for example `features.booking.ExpireSweepTest#expiresHoldsAtTheBoundaryAndFreesSeats`.
 
 **Trade-offs and limits.**
 
-- **"Time only through `Clock`" is a convention verified by search, not by a test.** At this commit no production code calls `Instant.now()` or `System.currentTimeMillis()`, but nothing in the build would fail if someone added one. An ArchUnit-style rule would close that.
+- **"Time only through `Clock`" is now enforced by the build.** `TargetLayout` fails on any wall-clock read in production code (`Instant.now()` and the other `java.time` `now()` calls without a clock argument, `System.currentTimeMillis()`, `Clock.system...()`, `new Date()`, `Calendar.getInstance()`) except in `Main.java`, the one place that creates `Clock.systemUTC()` and passes it down. `SchemaRunner` used to stamp `schema_history.applied_at` with its own system clock; it now receives the clock from `Main`. `System.nanoTime()` is not matched: it is a stopwatch, not the time of day.
 - Only INR exists; there is no multi-currency or tax. The admin occupancy percentage in reports is a `double`, which is a ratio, not money.
 - Epoch milliseconds are exact; DST matters only when deriving local times, and that is done once from the city's zone.
 
@@ -750,10 +755,11 @@ For **gateway calls** the code currently makes them *inside* the write transacti
 - `MainTest#closeIsIdempotent`.
 - `MainTest#theSweepRunsOnJoltsSchedulerOnceListeningAndStopsOnClose`: after `close` the pool is closed (health reports `DOWN`) and the sweeper stopped before it.
 - `MainTest#streamsAreNotCutByTheDefaultMaxDuration`.
+- `ShutdownWithLiveStreamTest#closingTheAppWithAnOpenStreamReturnsPromptlyAndEndsTheStream`: close with a live SSE connection.
 
 **Trade-offs and limits.**
 
-- No test closes a `Booted` with a live SSE connection open and asserts the drain finishes promptly. The two halves (the hub ends streams; `close` runs in that order) are tested separately, not together.
+- **Both halves are now tested together**: the app boots on a real socket, a client holds an SSE stream open (the test first checks the server keeps it open), `close` returns in under 10 s, and the client's stream ends (`ShutdownWithLiveStreamTest#closingTheAppWithAnOpenStreamReturnsPromptlyAndEndsTheStream`).
 - Ending streams before the drain is a workaround for a missing Jolt pre-drain hook (`TODO(jolt#82)` in `Main`); when Jolt gains one, the call moves there.
 - In-flight transactions are drained by Jolt, not by this code; a killed process can still lose a request.
 
@@ -799,15 +805,10 @@ These are popular system design problems for a ticketing system that the code do
 | **Dynamic pricing, offers, food and beverages** | Out of scope in the spec (price is fixed per category per show). Surge pricing and coupons are common product features. | A pricing service with a quote that is locked onto the hold at hold time. | L |
 | **Observability beyond counters** | The app exposes metrics for SSE subscribers, cache hits and sweep runs, but no tracing, no alerting rules, no SLOs. | OpenTelemetry traces, alerts on 5xx, `SQLITE_BUSY`, sweep lag and webhook failures. | S to M |
 
-**Claims the tests do not back.** These guarantees are real in the code but have no test that proves them, as noted in the sections above:
+**Claims the tests do not back.** Most of the earlier list is now proven (stampede, subscribe-before-snapshot, concurrent show overlap, shutdown with a live stream, redelivery over HTTP, the wall-clock rule, the idempotency lease). What is still real in the code but not proven:
 
-- Single-flight (stampede) behaviour of the catalog cache: Jolt's, untested here (problem 8).
-- The subscribe-before-snapshot ordering of the live stream (problem 7).
-- Time only through `Clock`; checked by search, not enforced (problem 13).
-- No overlapping shows under concurrent scheduling; checked in one transaction, never raced (problem 12).
-- A real optimistic-version conflict: only injected misses are tested (problem 5).
+- A real optimistic-version conflict: only injected misses are tested (problem 5). Under SQLite's single writer a genuine concurrent miss cannot happen; it matters only on Postgres.
 - Login timing equality: the decoy runs, equal time is not measured (problem 9).
-- Shutdown with a live SSE connection (problem 16).
 
 ## Scaling beyond one node
 
