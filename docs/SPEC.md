@@ -89,6 +89,8 @@ Terminal states: EXPIRED, CANCELLED, REFUNDED. Sales for a show close at startsA
 
 ## 6. SQLite schema
 
+**Entity relationship diagram.** [docs/ERD.md](ERD.md) holds the ERD of every table below, and of later migrations, and the table notes. Any change to a table, column, constraint, index, migration or kernel entity MUST update docs/ERD.md in the same commit; `ErdDriftTest` fails the build when the diagram and the migrated schema disagree. The schema in the migrations is authoritative: where this section and the migrations differ, the migrations win and this section is corrected.
+
 `V1__schema.sql` (in `src/main/resources/db/migrations`). Every table is `STRICT`; `PRAGMA foreign_keys = ON` per connection.
 
 ```sql
