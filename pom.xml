@@ -14,7 +14,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <jolt.groupId>com.github.THIRU-1074.custom-Http-Server</jolt.groupId>
-    <jolt.version>v0.4.1</jolt.version>
+    <jolt.version>v0.4.2</jolt.version>
     <sqlite.version>3.45.2.0</sqlite.version>
     <junit.version>5.10.2</junit.version>
     <snakeyaml.version>2.2</snakeyaml.version>
