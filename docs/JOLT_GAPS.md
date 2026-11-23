@@ -4,7 +4,7 @@ Every Jolt limitation the app hits. Each interim workaround carries `TODO(jolt#N
 
 Status: `open` (no fix released), `in progress` (fix branch exists), `released vX` (bump `jolt.version` and remove the workaround), `done` (workaround removed).
 
-The app runs on Jolt v0.4.1, which closes every row below. Gaps found during that upgrade are listed at the end; they are filed as #81 to #87 and each workaround carries its `TODO(jolt#N)`.
+The app runs on Jolt v0.4.2, which closes every row below. Gaps found during that upgrade are listed at the end; they are filed as #81 to #87 and each workaround carries its `TODO(jolt#N)`.
 
 | Gap | Jolt issue | Workaround location | Status |
 |---|---|---|---|

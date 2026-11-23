@@ -368,7 +368,7 @@ These replace line-by-line review; a change is done when all are green in `mvn -
 
 ## 11. Jolt features used
 
-Jolt `v0.4.1` (`jolt.version` in `pom.xml`).
+Jolt `v0.4.2` (`jolt.version` in `pom.xml`).
 
 | Requirement | Jolt API |
 |---|---|
